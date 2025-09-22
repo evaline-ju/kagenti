@@ -1,0 +1,14 @@
+[package]
+name = "rust-pii-wasm-filter"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+crate-type = ["cdylib"] # C-compatible for WASM filters
+
+[dependencies]
+proxy-wasm = "0.2.3" # Rust SDK
+log = "0.4"
+regex = { version = "1.11.2", default-features = false, features = ["perf", "unicode-case", "unicode-perl"] }
+once_cell = "1.21.3"
