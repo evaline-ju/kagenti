@@ -22,7 +22,6 @@ fn redact_text(input: &str) -> Cow<'_, str> {
     }
 
     // // This leads to variable length string considerations
-    // Allocate a single String once
     // let mut s = input.to_owned();
     // // Apply replacements in-place
     // s = EMAIL_RE.replace_all(&s, "[EMAIL_REDACTED]").into_owned();
@@ -66,7 +65,7 @@ impl PiiFilter {
         let redacted = redact_text(s);
             if redacted != s {
                 let new_body = redacted.as_bytes();
-                log::info!(
+                log::warn!(
                     "Replacing {} body ({} bytes)",
                     if is_request { "request" } else { "response" },
                     new_body.len()
@@ -78,11 +77,13 @@ impl PiiFilter {
                 }
             }
 
+        // This part was an attempt to pad/truncate the redacted string to the
+        // original length to avoid JSON issues but only worked for the truncation case
+        // when input strings were longer than the redacted string e.g. "[EMAIL REDACTED]"
+
         // let redacted: &str = &redact_text(s); // convert Cow to &str
 
         // if redacted != s {
-        //     // Pad or truncate redacted string to match original length
-        //     // Hacky hacks!
         //     let new_body = if redacted.len() < s.len() {
         //         let mut padded = redacted.to_string();
         //         padded.push_str(&" ".repeat(s.len() - redacted.len()));
