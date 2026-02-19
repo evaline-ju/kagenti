@@ -13,9 +13,8 @@ otel-kagenti:
     # initial separate namespace
 	# kubectl apply -f examples/otel/namespace.yaml -f examples/otel/tempo.yaml -f examples/otel/loki.yaml -f examples/otel/otel-collector.yaml -f examples/otel/grafana.yaml
 	# @kubectl wait --for=condition=Available deployment -n observability --all --timeout=120s
-	# Check how the collector is set
     kubectl set env deployment/mcp-gateway-broker-router -n mcp-system \
-		OTEL_EXPORTER_OTLP_ENDPOINT="$(OTEL_COLLECTOR_HTTP)" OTEL_EXPORTER_OTLP_INSECURE="true"
+		OTEL_EXPORTER_OTLP_ENDPOINT="http://otel-collector.kagenti-system.svc.cluster.local:8335" OTEL_EXPORTER_OTLP_INSECURE="true"
 	@kubectl rollout status deployment/mcp-gateway-broker-router -n mcp-system --timeout=120s
 
 #     Environment:
