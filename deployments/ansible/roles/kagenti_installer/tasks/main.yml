@@ -1416,7 +1416,7 @@
 - name: Install/upgrade mcp-gateway chart
   kubernetes.core.helm:
     release_name: mcp-gateway
-    chart_ref: oci://ghcr.io/kagenti/charts/mcp-gateway
+    chart_ref: oci://ghcr.io/kuadrant/charts/mcp-gateway
     chart_version: "{{ charts.mcpGateway.version }}"
     release_namespace: "{{ charts.mcpGateway.namespace }}"
     create_namespace: true
@@ -1433,6 +1433,32 @@
   retries: 3
   delay: 15
   until: mcp_gateway_result is not failed
+  when: charts.mcpGateway.enabled | default(false)
+
+- name: Patch mcp-gateway-broker-router with OTEL env vars
+  kubernetes.core.k8s:
+    api_version: apps/v1
+    kind: Deployment
+    name: mcp-gateway-broker-router
+    namespace: "{{ charts.mcpGateway.namespace | default('mcp-system') }}"
+    state: patched
+    definition:
+      spec:
+        template:
+          spec:
+            containers:
+              - name: mcp-broker-router
+                env:
+                  - name: NAMESPACE
+                    valueFrom:
+                      fieldRef:
+                        fieldPath: metadata.namespace
+                  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+                    value: "http://otel-collector.kagenti-system.svc.cluster.local:8335"
+                  - name: OTEL_EXPORTER_OTLP_INSECURE
+                    value: "true"
+                  - name: OTEL_EXPORTER_OTLP_PROTOCOL
+                    value: "http/protobuf"
   when: charts.mcpGateway.enabled | default(false)
 
 #

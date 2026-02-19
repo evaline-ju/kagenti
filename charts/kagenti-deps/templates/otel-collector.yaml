@@ -158,6 +158,8 @@ data:
     receivers:
       otlp:
         protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
           http:
             endpoint: 0.0.0.0:4318 # overriden by the server
 
@@ -168,6 +170,12 @@ data:
         endpoint: phoenix:4317
         tls:
           insecure: true
+      {{- if $.Values.components.grafana.enabled }}
+      otlp/tempo:
+        endpoint: tempo:4317
+        tls:
+          insecure: true
+      {{- end }}
       {{- if $.Values.components.mlflow.enabled }}
       otlphttp/mlflow:
         # Use traces_endpoint to specify exact URL (endpoint would append /v1/traces)
@@ -278,6 +286,12 @@ data:
           receivers: [ otlp ]
           processors: [ memory_limiter, filter/phoenix, transform/genai_to_openinference, batch ]
           exporters: [ otlp/phoenix ]
+        {{- if $.Values.components.grafana.enabled }}
+        traces/tempo:
+          receivers: [ otlp ]
+          processors: [ memory_limiter, batch ]
+          exporters: [ otlp/tempo ]
+        {{- end }}
         {{- if $.Values.components.mlflow.enabled }}
         traces/mlflow:
           receivers: [ otlp ]

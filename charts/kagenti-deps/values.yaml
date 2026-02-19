@@ -27,6 +27,8 @@ components:
     enabled: true
   mlflow:
     enabled: false
+  grafana:
+    enabled: false
   containerRegistry:
     enabled: false
   spire:

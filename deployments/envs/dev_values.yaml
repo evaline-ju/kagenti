@@ -34,6 +34,8 @@ charts:
           enabled: true
         mlflow:
           enabled: false  # Disabled for Kind - requires full OTEL instrumentation
+        grafana:
+          enabled: true
         mcpInspector:
           enabled: true
         metricsServer:

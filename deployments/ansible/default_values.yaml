@@ -59,6 +59,8 @@ charts:
           enabled: false
         otel:
           enabled: false
+        grafana:
+          enabled: false
         spire:
           enabled: false
         mcpInspector:
@@ -88,10 +90,12 @@ charts:
   mcpGateway:
     enabled: false
     namespace: mcp-system
-    version: 0.4.0
+    version: 0.5.0
     values:
       image:
-        tag: v0.4
+        tag: v0.5.0
+      broker:
+        create: true
 
   ####################################################################
   # kagenti
