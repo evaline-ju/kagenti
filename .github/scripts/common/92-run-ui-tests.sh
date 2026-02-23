@@ -4,7 +4,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/env-detect.sh"
 source "$SCRIPT_DIR/../lib/logging.sh"
 
-log_step "91" "Running UI E2E tests (Playwright)"
+log_step "92" "Running UI E2E tests (Playwright)"
 
 # Check Node.js is available
 if ! command -v node &>/dev/null; then

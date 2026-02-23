@@ -8,6 +8,10 @@ on:
       - 'deployments/**'
       - '.github/**'
       - 'charts/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'kagenti/ui-v2/package.json'
+      - 'kagenti/ui-v2/package-lock.json'
 
 # Explicit permissions - principle of least privilege
 permissions:
@@ -95,8 +99,17 @@ jobs:
       - name: Start port-forward for agent service
         run: bash .github/scripts/common/85-start-port-forward.sh
 
-      - name: Run E2E tests (kagenti-operator)
+      - name: Pre-flight checks
+        if: success()
+        run: bash .github/scripts/common/90-preflight-checks.sh
+
+      - name: Run backend E2E tests
+        if: success()
         run: bash .github/scripts/kagenti-operator/90-run-e2e-tests.sh
+
+      - name: Run UI E2E tests
+        if: success()
+        run: bash .github/scripts/common/92-run-ui-tests.sh
 
       - name: Upload test results
         if: always()
