@@ -96,6 +96,7 @@ jobs:
         uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5  # v6
         with:
           go-version: '1.23'
+          cache: false  # No go.sum at repo root; hcp CLI builds in /tmp
 
       - name: Build hcp CLI from source
         run: bash .github/scripts/hypershift/ci/30-build-hcp-cli.sh
@@ -246,6 +247,7 @@ jobs:
         uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5  # v6
         with:
           go-version: '1.23'
+          cache: false  # No go.sum at repo root; hcp CLI builds in /tmp
 
       - name: Build hcp CLI from source
         run: bash .github/scripts/hypershift/ci/30-build-hcp-cli.sh

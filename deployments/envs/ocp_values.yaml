@@ -84,6 +84,9 @@ charts:
         istio:
           enabled: false
       # configs
+      mlflow:
+        auth:
+          enabled: true  # Override chart default (false) for OCP
       ui:
         auth:
           enabled: true
