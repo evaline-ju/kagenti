@@ -1,14 +1,14 @@
-# 
+#
 # setup
 #
 
-- name: setup vars 
+- name: setup vars
   ansible.builtin.import_tasks: 01_setup_vars.yaml
 
 - name: setup cluster
   ansible.builtin.import_tasks: 02_setup_cluster.yaml
 
-# 
+#
 #  Install Istio
 #
 - name: Install Istio helm charts for Kubernetes cluster
@@ -442,7 +442,7 @@
         spire_version_compatible: >-
           {{ (ocp_version_major | int == 4 and ocp_version_minor | int >= 19) or
              (ocp_version_major | int > 4) }}
-      when: 
+      when:
         - ocp_version is defined
         - ocp_version_major is defined
         - ocp_version_minor is defined
@@ -798,7 +798,7 @@
         msg: |
           Cert-manager CSV failed to reach 'Succeeded' state after 5 minutes.
           Current status: {{ cert_manager_csv_status.stdout | default('Unknown') }}
-          
+
           Troubleshooting steps:
           1. Check operator logs: kubectl logs -n cert-manager-operator -l app=cert-manager-operator
           2. Check CSV details: kubectl describe csv -n cert-manager-operator
@@ -874,10 +874,10 @@
       debug:
         msg: |
           Cert-manager webhook failed to become ready after 3 minutes.
-          
+
           Pod status:
           {{ webhook_pods.stdout }}
-          
+
           Check logs with:
           kubectl logs -n cert-manager -l app.kubernetes.io/name=cert-manager --tail=50
       when: cert_manager_webhook_ready.rc != 0
@@ -1438,7 +1438,7 @@
 #
 #  Install kagenti
 #
-- name: Compute latest kagenti tag 
+- name: Compute latest kagenti tag
   block:
     - name: Lookup latest tag from remote git
       shell: |
