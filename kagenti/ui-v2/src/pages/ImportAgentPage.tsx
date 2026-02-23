@@ -160,6 +160,8 @@ export const ImportAgentPage: React.FC = () => {
 
   // AuthBridge sidecar injection (default enabled for agents)
   const [authBridgeEnabled, setAuthBridgeEnabled] = useState(true);
+  // SPIRE identity
+  const [spireEnabled, setSpireEnabled] = useState(false);
 
   // Validation state
   const [validated, setValidated] = useState<Record<string, 'success' | 'error' | 'default'>>({});
@@ -452,6 +454,7 @@ export const ImportAgentPage: React.FC = () => {
         servicePorts,
         createHttpRoute,
         authBridgeEnabled,
+        spireEnabled,
         // Shipwright build configuration (always enabled)
         shipwrightConfig,
       });
@@ -477,6 +480,7 @@ export const ImportAgentPage: React.FC = () => {
         servicePorts,
         createHttpRoute,
         authBridgeEnabled,
+        spireEnabled,
       });
     }
   };
@@ -965,6 +969,16 @@ export const ImportAgentPage: React.FC = () => {
                   isChecked={authBridgeEnabled}
                   onChange={(_e, checked) => setAuthBridgeEnabled(checked)}
                   description="When enabled, the webhook injects AuthBridge sidecars (envoy-proxy, go-processor, client-registration) into the agent pod for token exchange."
+              />
+              </FormGroup>
+
+              {/* SPIRE Identity */}
+              <FormGroup fieldId="spireEnabled">
+                <Checkbox
+                  id="spireEnabled"
+                  label="Enable SPIRE identity (spiffe-helper sidecar)"
+                  isChecked={spireEnabled}
+                  onChange={(_e, checked) => setSpireEnabled(checked)}
                 />
               </FormGroup>
 

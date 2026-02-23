@@ -141,6 +141,8 @@ export const ImportToolPage: React.FC = () => {
 
   // AuthBridge sidecar injection (default disabled for tools)
   const [authBridgeEnabled, setAuthBridgeEnabled] = useState(false);
+  // SPIRE identity
+  const [spireEnabled, setSpireEnabled] = useState(false);
 
   // Validation state
   const [validated, setValidated] = useState<Record<string, 'success' | 'error' | 'default'>>({});
@@ -431,6 +433,7 @@ export const ImportToolPage: React.FC = () => {
         servicePorts: showPodConfig ? servicePorts : undefined,
         createHttpRoute,
         authBridgeEnabled,
+        spireEnabled,
       });
     } else {
       // Image deployment
@@ -452,6 +455,7 @@ export const ImportToolPage: React.FC = () => {
         servicePorts: showPodConfig ? servicePorts : undefined,
         createHttpRoute,
         authBridgeEnabled,
+        spireEnabled,
       });
     }
   };
@@ -908,6 +912,16 @@ export const ImportToolPage: React.FC = () => {
                   isChecked={authBridgeEnabled}
                   onChange={(_e, checked) => setAuthBridgeEnabled(checked)}
                   description="When enabled, the webhook injects AuthBridge sidecars (envoy-proxy, go-processor, client-registration) into the tool pod for token exchange."
+              />
+              </FormGroup>
+
+              {/* SPIRE Identity */}
+              <FormGroup fieldId="spireEnabled">
+                <Checkbox
+                  id="spireEnabled"
+                  label="Enable SPIRE identity (spiffe-helper sidecar)"
+                  isChecked={spireEnabled}
+                  onChange={(_e, checked) => setSpireEnabled(checked)}
                 />
               </FormGroup>
 

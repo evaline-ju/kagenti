@@ -30,6 +30,10 @@ APP_KUBERNETES_IO_NAME = "app.kubernetes.io/name"
 APP_KUBERNETES_IO_MANAGED_BY = "app.kubernetes.io/managed-by"
 APP_KUBERNETES_IO_COMPONENT = "app.kubernetes.io/component"
 
+# SPIRE identity labels (matched by kagenti-webhook pod_mutator.go)
+KAGENTI_SPIRE_LABEL = "kagenti.io/spire"
+KAGENTI_SPIRE_ENABLED_VALUE = "enabled"
+
 # Labels - Values
 KAGENTI_UI_CREATOR_LABEL = "kagenti-ui"
 KAGENTI_OPERATOR_LABEL_NAME = "kagenti-operator"

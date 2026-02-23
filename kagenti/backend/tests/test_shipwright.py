@@ -21,6 +21,13 @@ from app.routers.agents import (
     ServicePort,
     _build_agent_shipwright_build_manifest,
     _build_agent_shipwright_buildrun_manifest,
+    _build_common_labels,
+    _build_deployment_manifest,
+)
+from app.routers.tools import (
+    CreateToolRequest,
+    _build_tool_deployment_manifest,
+    _build_tool_statefulset_manifest,
 )
 from app.core.constants import (
     SHIPWRIGHT_CRD_GROUP,
@@ -36,6 +43,8 @@ from app.core.constants import (
     KAGENTI_TYPE_LABEL,
     KAGENTI_PROTOCOL_LABEL,
     KAGENTI_FRAMEWORK_LABEL,
+    KAGENTI_SPIRE_LABEL,
+    KAGENTI_SPIRE_ENABLED_VALUE,
     RESOURCE_TYPE_AGENT,
 )
 
@@ -827,3 +836,115 @@ class TestResolveCloneSecret:
 
         result = resolve_clone_secret(mock_core_api, "team1")
         assert result is None
+
+
+class TestSpireLabel:
+    """Tests for SPIRE identity label on workload manifests."""
+
+    def test_agent_deployment_has_spire_label_when_enabled(self):
+        """Verify agent deployment has kagenti.io/spire=enabled in pod template labels."""
+        request = CreateAgentRequest(
+            name="test-agent",
+            namespace="team1",
+            protocol="a2a",
+            framework="LangGraph",
+            deploymentMethod="image",
+            containerImage="registry.example.com/test-agent:v1",
+            spireEnabled=True,
+        )
+        manifest = _build_deployment_manifest(request, image="registry.example.com/test-agent:v1")
+
+        pod_labels = manifest["spec"]["template"]["metadata"]["labels"]
+        assert pod_labels.get(KAGENTI_SPIRE_LABEL) == KAGENTI_SPIRE_ENABLED_VALUE
+
+        metadata_labels = manifest["metadata"]["labels"]
+        assert metadata_labels.get(KAGENTI_SPIRE_LABEL) == KAGENTI_SPIRE_ENABLED_VALUE
+
+    def test_agent_deployment_no_spire_label_when_disabled(self):
+        """Verify agent deployment does NOT have SPIRE label when disabled."""
+        request = CreateAgentRequest(
+            name="test-agent",
+            namespace="team1",
+            protocol="a2a",
+            framework="LangGraph",
+            deploymentMethod="image",
+            containerImage="registry.example.com/test-agent:v1",
+            spireEnabled=False,
+        )
+        manifest = _build_deployment_manifest(request, image="registry.example.com/test-agent:v1")
+
+        pod_labels = manifest["spec"]["template"]["metadata"]["labels"]
+        assert KAGENTI_SPIRE_LABEL not in pod_labels
+
+    def test_agent_common_labels_include_spire_when_enabled(self):
+        """Verify _build_common_labels includes SPIRE label when enabled."""
+        request = CreateAgentRequest(
+            name="test-agent",
+            namespace="team1",
+            spireEnabled=True,
+        )
+        labels = _build_common_labels(request)
+        assert labels[KAGENTI_SPIRE_LABEL] == KAGENTI_SPIRE_ENABLED_VALUE
+
+    def test_agent_common_labels_no_spire_by_default(self):
+        """Verify _build_common_labels does not include SPIRE label by default."""
+        request = CreateAgentRequest(
+            name="test-agent",
+            namespace="team1",
+        )
+        labels = _build_common_labels(request)
+        assert KAGENTI_SPIRE_LABEL not in labels
+
+    def test_agent_shipwright_stores_spire_in_config(self):
+        """Verify spireEnabled is stored in the Shipwright Build annotation."""
+        request = CreateAgentRequest(
+            name="test-agent",
+            namespace="team1",
+            gitUrl="https://github.com/example/repo",
+            gitPath="agents/test",
+            deploymentMethod="source",
+            spireEnabled=True,
+        )
+        manifest = _build_agent_shipwright_build_manifest(request)
+
+        annotations = manifest["metadata"]["annotations"]
+        config = json.loads(annotations["kagenti.io/agent-config"])
+        assert config["spireEnabled"] is True
+
+    def test_tool_deployment_has_spire_label_when_enabled(self):
+        """Verify tool deployment has kagenti.io/spire=enabled in pod template labels."""
+        manifest = _build_tool_deployment_manifest(
+            name="test-tool",
+            namespace="team1",
+            image="registry.example.com/test-tool:v1",
+            spire_enabled=True,
+        )
+
+        pod_labels = manifest["spec"]["template"]["metadata"]["labels"]
+        assert pod_labels.get(KAGENTI_SPIRE_LABEL) == KAGENTI_SPIRE_ENABLED_VALUE
+
+        metadata_labels = manifest["metadata"]["labels"]
+        assert metadata_labels.get(KAGENTI_SPIRE_LABEL) == KAGENTI_SPIRE_ENABLED_VALUE
+
+    def test_tool_deployment_no_spire_label_by_default(self):
+        """Verify tool deployment does NOT have SPIRE label by default."""
+        manifest = _build_tool_deployment_manifest(
+            name="test-tool",
+            namespace="team1",
+            image="registry.example.com/test-tool:v1",
+        )
+
+        pod_labels = manifest["spec"]["template"]["metadata"]["labels"]
+        assert KAGENTI_SPIRE_LABEL not in pod_labels
+
+    def test_tool_statefulset_has_spire_label_when_enabled(self):
+        """Verify tool StatefulSet has kagenti.io/spire=enabled in pod template labels."""
+        manifest = _build_tool_statefulset_manifest(
+            name="test-tool",
+            namespace="team1",
+            image="registry.example.com/test-tool:v1",
+            spire_enabled=True,
+        )
+
+        pod_labels = manifest["spec"]["template"]["metadata"]["labels"]
+        assert pod_labels.get(KAGENTI_SPIRE_LABEL) == KAGENTI_SPIRE_ENABLED_VALUE

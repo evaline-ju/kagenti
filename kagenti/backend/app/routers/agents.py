@@ -58,6 +58,9 @@ from app.core.constants import (
     # Migration constants (Phase 4)
     MIGRATION_SOURCE_ANNOTATION,
     MIGRATION_TIMESTAMP_ANNOTATION,
+    # SPIRE identity constants
+    KAGENTI_SPIRE_LABEL,
+    KAGENTI_SPIRE_ENABLED_VALUE,
 )
 from app.core.config import settings
 from app.models.responses import (
@@ -208,6 +211,8 @@ class CreateAgentRequest(BaseModel):
 
     # AuthBridge sidecar injection (default enabled for agents)
     authBridgeEnabled: bool = True
+    # SPIRE identity (spiffe-helper sidecar injection)
+    spireEnabled: bool = False
 
     # Shipwright build configuration
     shipwrightConfig: Optional[ShipwrightBuildConfig] = None
@@ -1781,6 +1786,7 @@ def _build_agent_shipwright_build_manifest(
         "registrySecret": request.registrySecret,
         "workloadType": request.workloadType,  # Store workload type for finalization
         "authBridgeEnabled": request.authBridgeEnabled,
+        "spireEnabled": request.spireEnabled,
     }
     # Add env vars if present
     if request.envVars:
@@ -1877,7 +1883,7 @@ def _build_common_labels(
     Returns:
         Dictionary of labels.
     """
-    return {
+    labels = {
         # Required labels
         KAGENTI_TYPE_LABEL: RESOURCE_TYPE_AGENT,
         APP_KUBERNETES_IO_NAME: request.name,
@@ -1890,6 +1896,10 @@ def _build_common_labels(
         # AuthBridge sidecar injection control
         KAGENTI_INJECT_LABEL: "enabled" if request.authBridgeEnabled else "disabled",
     }
+    # SPIRE identity label (triggers spiffe-helper sidecar injection by kagenti-webhook)
+    if request.spireEnabled:
+        labels[KAGENTI_SPIRE_LABEL] = KAGENTI_SPIRE_ENABLED_VALUE
+    return labels
 
 
 def _build_selector_labels(request: "CreateAgentRequest") -> Dict[str, str]:
@@ -2653,6 +2663,9 @@ async def finalize_shipwright_build(
             # Convert stored dict format back to ServicePort objects
             final_service_ports = [ServicePort(**sp) for sp in stored_config["servicePorts"]]
 
+        # Propagate SPIRE identity setting from stored config
+        final_spire_enabled = stored_config.get("spireEnabled", False)
+
         # Step 3: Create workload + Service with the built image
         # Build a CreateAgentRequest-like object for manifest builders
         agent_request = CreateAgentRequest(
@@ -2668,6 +2681,7 @@ async def finalize_shipwright_build(
             servicePorts=final_service_ports,
             createHttpRoute=final_create_route,
             authBridgeEnabled=final_auth_bridge,
+            spireEnabled=final_spire_enabled,
         )
 
         # Create workload based on workloadType
