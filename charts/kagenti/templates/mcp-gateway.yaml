@@ -29,6 +29,20 @@ spec:
         namespaces:
           from: All #any namespace can register an MCP server route
 ---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-mcp-gateway-extension
+  namespace: "{{ .Values.mcpGateway.namespaces.gatewaySystem }}"
+spec:
+  from:
+    - group: mcp.kagenti.com
+      kind: MCPGatewayExtension
+      namespace: "{{ .Values.mcpGateway.namespaces.mcpSystem }}"
+  to:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
