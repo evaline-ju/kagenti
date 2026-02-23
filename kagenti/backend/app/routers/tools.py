@@ -57,6 +57,9 @@ from app.core.constants import (
     TOOLHIVE_SERVICE_PREFIX,
     TOOLHIVE_SERVICE_SUFFIX,
     MIGRATION_SOURCE_MCPSERVER_CRD,
+    # SPIRE identity constants
+    KAGENTI_SPIRE_LABEL,
+    KAGENTI_SPIRE_ENABLED_VALUE,
 )
 from app.models.responses import (
     ToolSummary,
@@ -218,6 +221,8 @@ class CreateToolRequest(BaseModel):
 
     # AuthBridge sidecar injection (default disabled for tools)
     authBridgeEnabled: bool = False
+    # SPIRE identity (spiffe-helper sidecar injection)
+    spireEnabled: bool = False
 
 
 class FinalizeToolBuildRequest(BaseModel):
@@ -560,6 +565,7 @@ def _build_tool_shipwright_build_manifest(
         "registrySecret": request.registrySecret,
         "workloadType": request.workloadType,
         "authBridgeEnabled": request.authBridgeEnabled,
+        "spireEnabled": request.spireEnabled,
     }
     # Add persistent storage config if present (for StatefulSet)
     if request.persistentStorage:
@@ -1048,6 +1054,7 @@ def _build_tool_deployment_manifest(
     image_pull_secret: Optional[str] = None,
     shipwright_build_name: Optional[str] = None,
     auth_bridge_enabled: bool = False,
+    spire_enabled: bool = False,
 ) -> dict:
     """
     Build a Kubernetes Deployment manifest for an MCP tool.
@@ -1088,6 +1095,20 @@ def _build_tool_deployment_manifest(
         KAGENTI_INJECT_LABEL: "enabled" if auth_bridge_enabled else "disabled",
     }
 
+    # Pod template labels (subset used on pod template metadata)
+    pod_labels = {
+        KAGENTI_TYPE_LABEL: RESOURCE_TYPE_TOOL,
+        APP_KUBERNETES_IO_NAME: name,
+        KAGENTI_PROTOCOL_LABEL: VALUE_PROTOCOL_MCP,
+        KAGENTI_TRANSPORT_LABEL: VALUE_TRANSPORT_STREAMABLE_HTTP,
+        KAGENTI_FRAMEWORK_LABEL: framework,
+    }
+
+    # SPIRE identity label (triggers spiffe-helper sidecar injection by kagenti-webhook)
+    if spire_enabled:
+        labels[KAGENTI_SPIRE_LABEL] = KAGENTI_SPIRE_ENABLED_VALUE
+        pod_labels[KAGENTI_SPIRE_LABEL] = KAGENTI_SPIRE_ENABLED_VALUE
+
     # Build annotations
     annotations = {}
     if description:
@@ -1114,14 +1135,7 @@ def _build_tool_deployment_manifest(
             },
             "template": {
                 "metadata": {
-                    "labels": {
-                        KAGENTI_TYPE_LABEL: RESOURCE_TYPE_TOOL,
-                        APP_KUBERNETES_IO_NAME: name,
-                        KAGENTI_PROTOCOL_LABEL: VALUE_PROTOCOL_MCP,
-                        KAGENTI_TRANSPORT_LABEL: VALUE_TRANSPORT_STREAMABLE_HTTP,
-                        KAGENTI_FRAMEWORK_LABEL: framework,
-                        KAGENTI_INJECT_LABEL: "enabled" if auth_bridge_enabled else "disabled",
-                    }
+                    "labels": pod_labels,
                 },
                 "spec": {
                     "securityContext": {
@@ -1183,6 +1197,7 @@ def _build_tool_statefulset_manifest(
     shipwright_build_name: Optional[str] = None,
     storage_size: str = "1Gi",
     auth_bridge_enabled: bool = False,
+    spire_enabled: bool = False,
 ) -> dict:
     """
     Build a Kubernetes StatefulSet manifest for an MCP tool.
@@ -1227,6 +1242,20 @@ def _build_tool_statefulset_manifest(
         KAGENTI_INJECT_LABEL: "enabled" if auth_bridge_enabled else "disabled",
     }
 
+    # Pod template labels (subset used on pod template metadata)
+    pod_labels = {
+        KAGENTI_TYPE_LABEL: RESOURCE_TYPE_TOOL,
+        APP_KUBERNETES_IO_NAME: name,
+        KAGENTI_PROTOCOL_LABEL: VALUE_PROTOCOL_MCP,
+        KAGENTI_TRANSPORT_LABEL: VALUE_TRANSPORT_STREAMABLE_HTTP,
+        KAGENTI_FRAMEWORK_LABEL: framework,
+    }
+
+    # SPIRE identity label (triggers spiffe-helper sidecar injection by kagenti-webhook)
+    if spire_enabled:
+        labels[KAGENTI_SPIRE_LABEL] = KAGENTI_SPIRE_ENABLED_VALUE
+        pod_labels[KAGENTI_SPIRE_LABEL] = KAGENTI_SPIRE_ENABLED_VALUE
+
     # Build annotations
     annotations = {}
     if description:
@@ -1254,14 +1283,7 @@ def _build_tool_statefulset_manifest(
             },
             "template": {
                 "metadata": {
-                    "labels": {
-                        KAGENTI_TYPE_LABEL: RESOURCE_TYPE_TOOL,
-                        APP_KUBERNETES_IO_NAME: name,
-                        KAGENTI_PROTOCOL_LABEL: VALUE_PROTOCOL_MCP,
-                        KAGENTI_TRANSPORT_LABEL: VALUE_TRANSPORT_STREAMABLE_HTTP,
-                        KAGENTI_FRAMEWORK_LABEL: framework,
-                        KAGENTI_INJECT_LABEL: "enabled" if auth_bridge_enabled else "disabled",
-                    }
+                    "labels": pod_labels,
                 },
                 "spec": {
                     "securityContext": {
@@ -1511,6 +1533,7 @@ async def create_tool(
                     storage_size=storage_size,
                     description=description,
                     auth_bridge_enabled=request.authBridgeEnabled,
+                    spire_enabled=request.spireEnabled,
                 )
                 kube.create_statefulset(request.namespace, workload_manifest)
                 logger.info(
@@ -1529,6 +1552,7 @@ async def create_tool(
                     image_pull_secret=request.imagePullSecret,
                     description=description,
                     auth_bridge_enabled=request.authBridgeEnabled,
+                    spire_enabled=request.spireEnabled,
                 )
                 kube.create_deployment(request.namespace, workload_manifest)
                 logger.info(
@@ -1872,6 +1896,9 @@ async def finalize_tool_shipwright_build(
         # Determine image pull secret
         image_pull_secret = request.imagePullSecret or tool_config_dict.get("registrySecret")
 
+        # Propagate SPIRE identity setting from stored config
+        spire_enabled = tool_config_dict.get("spireEnabled", False)
+
         # Create workload (Deployment or StatefulSet)
         if workload_type == WORKLOAD_TYPE_STATEFULSET:
             # Determine storage size - check request first, then tool config
@@ -1894,6 +1921,7 @@ async def finalize_tool_shipwright_build(
                 shipwright_build_name=name,
                 storage_size=storage_size,
                 auth_bridge_enabled=auth_bridge_enabled,
+                spire_enabled=spire_enabled,
             )
             kube.create_statefulset(namespace, workload_manifest)
             logger.info(
@@ -1913,6 +1941,7 @@ async def finalize_tool_shipwright_build(
                 image_pull_secret=image_pull_secret,
                 shipwright_build_name=name,
                 auth_bridge_enabled=auth_bridge_enabled,
+                spire_enabled=spire_enabled,
             )
             kube.create_deployment(namespace, workload_manifest)
             logger.info(

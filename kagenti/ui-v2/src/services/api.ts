@@ -157,6 +157,8 @@ export const agentService = {
     createHttpRoute?: boolean;
     // AuthBridge sidecar injection
     authBridgeEnabled?: boolean;
+    // SPIRE identity
+    spireEnabled?: boolean;
     shipwrightConfig?: ShipwrightBuildConfig;
   }): Promise<{ success: boolean; name: string; namespace: string; message: string }> {
     return apiFetch('/agents', {
@@ -445,6 +447,8 @@ export const toolService = {
     createHttpRoute?: boolean;
     // AuthBridge sidecar injection
     authBridgeEnabled?: boolean;
+    // SPIRE identity
+    spireEnabled?: boolean;
   }): Promise<{ success: boolean; name: string; namespace: string; message: string }> {
     return apiFetch('/tools', {
       method: 'POST',
