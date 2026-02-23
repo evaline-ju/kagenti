@@ -54,7 +54,7 @@ jobs:
     steps:
       - name: Check user write permission
         id: check-permission
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v7
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8
         with:
           script: |
             const username = context.payload.comment.user.login;
@@ -80,7 +80,7 @@ jobs:
       - name: Get PR information
         id: pr-info
         if: steps.check-permission.outputs.check-result == 'true'
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v7
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8
         with:
           script: |
             const { data: pr } = await github.rest.pulls.get({
@@ -95,7 +95,7 @@ jobs:
 
       - name: Add safe-to-test label
         if: steps.check-permission.outputs.check-result == 'true'
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v7
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8
         with:
           script: |
             await github.rest.issues.addLabels({
@@ -108,7 +108,7 @@ jobs:
 
       - name: React to comment with rocket
         if: steps.check-permission.outputs.check-result == 'true'
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v7
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8
         with:
           script: |
             await github.rest.reactions.createForIssueComment({
@@ -120,7 +120,7 @@ jobs:
 
       - name: Create pending commit status
         if: steps.check-permission.outputs.check-result == 'true'
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8.0.0
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8
         with:
           script: |
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
@@ -137,7 +137,7 @@ jobs:
 
       - name: Post starting comment
         if: steps.check-permission.outputs.check-result == 'true'
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v7
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8
         with:
           script: |
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
@@ -204,7 +204,7 @@ jobs:
           OCP_VERSION: ${{ env.OCP_VERSION }}
 
       - name: Setup Go
-        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5  # v5
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5  # v6
         with:
           go-version: '1.23'
 
@@ -314,7 +314,7 @@ jobs:
           OCP_VERSION: ${{ env.OCP_VERSION }}
 
       - name: Setup Go
-        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5  # v5
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5  # v6
         with:
           go-version: '1.23'
 
@@ -363,7 +363,7 @@ jobs:
     steps:
       - name: Update commit status to success
         if: needs.e2e-tests.result == 'success'
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8.0.0
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8
         with:
           script: |
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
@@ -379,7 +379,7 @@ jobs:
 
       - name: Post success comment
         if: needs.e2e-tests.result == 'success'
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v7
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8
         with:
           script: |
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
@@ -401,7 +401,7 @@ jobs:
 
       - name: Update commit status to failure
         if: needs.e2e-tests.result == 'failure'
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8.0.0
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8
         with:
           script: |
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
@@ -417,7 +417,7 @@ jobs:
 
       - name: Post failure comment
         if: needs.e2e-tests.result == 'failure'
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v7
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8
         with:
           script: |
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
@@ -437,7 +437,7 @@ jobs:
 
       - name: Update commit status to error (cancelled)
         if: needs.e2e-tests.result == 'cancelled'
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8.0.0
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8
         with:
           script: |
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
@@ -453,7 +453,7 @@ jobs:
 
       - name: Post cancelled comment
         if: needs.e2e-tests.result == 'cancelled'
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v7
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8
         with:
           script: |
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;

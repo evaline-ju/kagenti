@@ -401,7 +401,7 @@ jobs:
 
       # Step 1: Show all dependency vulnerabilities (informational)
       - name: Show all dependency vulnerabilities (informational)
-        uses: aquasecurity/trivy-action@e368e328979b113139d6f9068e03accaed98a518  # v0.33.1
+        uses: aquasecurity/trivy-action@e368e328979b113139d6f9068e03accaed98a518  # v0.34.1
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -416,7 +416,7 @@ jobs:
       # The dependency-review job already catches NEW vulnerable dependencies.
       # A blocking full-repo scan runs after merge (security-post-merge.yaml).
       - name: Check for CRITICAL and HIGH dependency vulnerabilities
-        uses: aquasecurity/trivy-action@e368e328979b113139d6f9068e03accaed98a518  # v0.33.1
+        uses: aquasecurity/trivy-action@e368e328979b113139d6f9068e03accaed98a518  # v0.34.1
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -427,7 +427,7 @@ jobs:
           format: 'table'
 
       - name: Run Trivy config scan on production code (IaC)
-        uses: aquasecurity/trivy-action@e368e328979b113139d6f9068e03accaed98a518  # v0.33.1
+        uses: aquasecurity/trivy-action@e368e328979b113139d6f9068e03accaed98a518  # v0.34.1
         with:
           scan-type: 'config'
           # Scan only production directories, exclude examples
@@ -442,7 +442,7 @@ jobs:
           format: 'table'
 
       - name: Run Trivy config scan on examples (informational)
-        uses: aquasecurity/trivy-action@e368e328979b113139d6f9068e03accaed98a518  # v0.33.1
+        uses: aquasecurity/trivy-action@e368e328979b113139d6f9068e03accaed98a518  # v0.34.1
         with:
           scan-type: 'config'
           scan-ref: 'kagenti/examples'
