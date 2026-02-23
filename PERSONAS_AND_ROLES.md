@@ -123,7 +123,7 @@ Kagenti is a cloud-native middleware platform that provides framework-neutral, s
 
 - `agents.kagenti.operator.dev/v1alpha1`
 - `components.kagenti.operator.dev/v1alpha1`
-- `mcpservers.mcp.kagenti.com/v1alpha1`
+- `mcpserverregistrations.mcp.kagenti.com/v1alpha1`
 
 **Technical Skills**:
 

@@ -11,8 +11,9 @@ log_step "41" "Waiting for Kagenti Operator CRDs"
 # deploy agents using standard Kubernetes Deployments + Services directly.
 # Only keeping CRDs that are still actively used in CI.
 CRDS=(
-    "mcpservers.mcp.kagenti.com"
+    "mcpserverregistrations.mcp.kagenti.com"
     "mcpvirtualservers.mcp.kagenti.com"
+    "mcpserverregistrations.mcp.kagenti.com"
 )
 
 for crd in "${CRDS[@]}"; do
