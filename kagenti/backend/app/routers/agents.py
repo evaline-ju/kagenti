@@ -27,6 +27,7 @@ from app.core.constants import (
     KAGENTI_TYPE_LABEL,
     KAGENTI_PROTOCOL_LABEL,
     KAGENTI_FRAMEWORK_LABEL,
+    KAGENTI_INJECT_LABEL,
     KAGENTI_WORKLOAD_TYPE_LABEL,
     KAGENTI_DESCRIPTION_ANNOTATION,
     APP_KUBERNETES_IO_CREATED_BY,
@@ -204,6 +205,9 @@ class CreateAgentRequest(BaseModel):
 
     # HTTPRoute/Route creation
     createHttpRoute: bool = False
+
+    # AuthBridge sidecar injection (default enabled for agents)
+    authBridgeEnabled: bool = True
 
     # Shipwright build configuration
     shipwrightConfig: Optional[ShipwrightBuildConfig] = None
@@ -1776,6 +1780,7 @@ def _build_agent_shipwright_build_manifest(
         "createHttpRoute": request.createHttpRoute,
         "registrySecret": request.registrySecret,
         "workloadType": request.workloadType,  # Store workload type for finalization
+        "authBridgeEnabled": request.authBridgeEnabled,
     }
     # Add env vars if present
     if request.envVars:
@@ -1882,6 +1887,8 @@ def _build_common_labels(
         KAGENTI_WORKLOAD_TYPE_LABEL: workload_type,
         APP_KUBERNETES_IO_MANAGED_BY: KAGENTI_UI_CREATOR_LABEL,
         APP_KUBERNETES_IO_COMPONENT: RESOURCE_TYPE_AGENT,
+        # AuthBridge sidecar injection control
+        KAGENTI_INJECT_LABEL: "enabled" if request.authBridgeEnabled else "disabled",
     }
 
 
@@ -2437,6 +2444,7 @@ class FinalizeShipwrightBuildRequest(BaseModel):
     envVars: Optional[List[EnvVar]] = None
     servicePorts: Optional[List[ServicePort]] = None
     createHttpRoute: Optional[bool] = None
+    authBridgeEnabled: Optional[bool] = None
     imagePullSecret: Optional[str] = None
 
 
@@ -2626,6 +2634,11 @@ async def finalize_shipwright_build(
             if request.imagePullSecret is not None
             else stored_config.get("registrySecret")
         )
+        final_auth_bridge = (
+            request.authBridgeEnabled
+            if request.authBridgeEnabled is not None
+            else stored_config.get("authBridgeEnabled", True)
+        )
         # Use expected_workload_type computed earlier (from stored config)
         final_workload_type = expected_workload_type
 
@@ -2654,6 +2667,7 @@ async def finalize_shipwright_build(
             envVars=final_env_vars,
             servicePorts=final_service_ports,
             createHttpRoute=final_create_route,
+            authBridgeEnabled=final_auth_bridge,
         )
 
         # Create workload based on workloadType

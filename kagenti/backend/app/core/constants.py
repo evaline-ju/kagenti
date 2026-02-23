@@ -21,6 +21,7 @@ TOOLHIVE_MCP_PLURAL = settings.toolhive_mcp_plural
 KAGENTI_TYPE_LABEL = settings.kagenti_type_label
 KAGENTI_PROTOCOL_LABEL = settings.kagenti_protocol_label
 KAGENTI_FRAMEWORK_LABEL = settings.kagenti_framework_label
+KAGENTI_INJECT_LABEL = "kagenti.io/inject"
 KAGENTI_TRANSPORT_LABEL = "kagenti.io/transport"
 KAGENTI_WORKLOAD_TYPE_LABEL = "kagenti.io/workload-type"
 KAGENTI_DESCRIPTION_ANNOTATION = "kagenti.io/description"
