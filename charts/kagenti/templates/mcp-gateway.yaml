@@ -7,9 +7,10 @@ metadata:
   annotations:
     networking.istio.io/service-type: ClusterIP
   labels:
-    gateway-type: mcpgateway
+    gateway.io/name: mcp-gateway
     istio: ingressgateway
     {{- include "kagenti.labels" . | nindent 4 }}
+
 spec:
   gatewayClassName: istio
   listeners:
