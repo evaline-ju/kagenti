@@ -86,9 +86,9 @@ data:
             fi
             # if route not found it should mean component was not installed - return empty host
             if [[ $ELAPSED_TIME -ge $TIMEOUT_SECONDS ]]; then
-                #echo "!! Error: Timed out after $TIMEOUT_SECONDS seconds." >&2
-                #return 1
+                echo "    Route '$ROUTE_NAME' not found after ${TIMEOUT_SECONDS}s — skipping." >&2
                 printf ""
+                return 0
             fi
             sleep $CHECK_INTERVAL_SECONDS
             ELAPSED_TIME=$((ELAPSED_TIME + CHECK_INTERVAL_SECONDS))
