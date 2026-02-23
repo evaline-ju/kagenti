@@ -158,6 +158,9 @@ export const ImportAgentPage: React.FC = () => {
   // HTTPRoute/Route creation
   const [createHttpRoute, setCreateHttpRoute] = useState(false);
 
+  // AuthBridge sidecar injection (default enabled for agents)
+  const [authBridgeEnabled, setAuthBridgeEnabled] = useState(true);
+
   // Validation state
   const [validated, setValidated] = useState<Record<string, 'success' | 'error' | 'default'>>({});
 
@@ -448,6 +451,7 @@ export const ImportAgentPage: React.FC = () => {
         startCommand: showStartCommand ? startCommand : undefined,
         servicePorts,
         createHttpRoute,
+        authBridgeEnabled,
         // Shipwright build configuration (always enabled)
         shipwrightConfig,
       });
@@ -472,6 +476,7 @@ export const ImportAgentPage: React.FC = () => {
         imagePullSecret: imagePullSecret || undefined,
         servicePorts,
         createHttpRoute,
+        authBridgeEnabled,
       });
     }
   };
@@ -949,6 +954,17 @@ export const ImportAgentPage: React.FC = () => {
                   label="Enable external access to the agent endpoint"
                   isChecked={createHttpRoute}
                   onChange={(_e, checked) => setCreateHttpRoute(checked)}
+                />
+              </FormGroup>
+
+              {/* AuthBridge Sidecar Injection */}
+              <FormGroup fieldId="authBridgeEnabled">
+                <Checkbox
+                  id="authBridgeEnabled"
+                  label="Enable AuthBridge sidecar injection"
+                  isChecked={authBridgeEnabled}
+                  onChange={(_e, checked) => setAuthBridgeEnabled(checked)}
+                  description="When enabled, the webhook injects AuthBridge sidecars (envoy-proxy, go-processor, client-registration) into the agent pod for token exchange."
                 />
               </FormGroup>
 

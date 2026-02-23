@@ -26,6 +26,7 @@ from app.core.constants import (
     KAGENTI_TYPE_LABEL,
     KAGENTI_PROTOCOL_LABEL,
     KAGENTI_FRAMEWORK_LABEL,
+    KAGENTI_INJECT_LABEL,
     KAGENTI_TRANSPORT_LABEL,
     KAGENTI_WORKLOAD_TYPE_LABEL,
     KAGENTI_DESCRIPTION_ANNOTATION,
@@ -215,6 +216,9 @@ class CreateToolRequest(BaseModel):
     # HTTPRoute/Route creation
     createHttpRoute: bool = False
 
+    # AuthBridge sidecar injection (default disabled for tools)
+    authBridgeEnabled: bool = False
+
 
 class FinalizeToolBuildRequest(BaseModel):
     """Request to finalize a tool Shipwright build by creating the Deployment/StatefulSet."""
@@ -226,6 +230,7 @@ class FinalizeToolBuildRequest(BaseModel):
     envVars: Optional[List[EnvVar]] = None
     servicePorts: Optional[List[ServicePort]] = None
     createHttpRoute: Optional[bool] = None
+    authBridgeEnabled: Optional[bool] = None
     imagePullSecret: Optional[str] = None
 
 
@@ -554,6 +559,7 @@ def _build_tool_shipwright_build_manifest(
         "createHttpRoute": request.createHttpRoute,
         "registrySecret": request.registrySecret,
         "workloadType": request.workloadType,
+        "authBridgeEnabled": request.authBridgeEnabled,
     }
     # Add persistent storage config if present (for StatefulSet)
     if request.persistentStorage:
@@ -1041,6 +1047,7 @@ def _build_tool_deployment_manifest(
     service_ports: Optional[List[Dict[str, Any]]] = None,
     image_pull_secret: Optional[str] = None,
     shipwright_build_name: Optional[str] = None,
+    auth_bridge_enabled: bool = False,
 ) -> dict:
     """
     Build a Kubernetes Deployment manifest for an MCP tool.
@@ -1078,6 +1085,7 @@ def _build_tool_deployment_manifest(
         KAGENTI_FRAMEWORK_LABEL: framework,
         KAGENTI_WORKLOAD_TYPE_LABEL: WORKLOAD_TYPE_DEPLOYMENT,
         APP_KUBERNETES_IO_MANAGED_BY: KAGENTI_UI_CREATOR_LABEL,
+        KAGENTI_INJECT_LABEL: "enabled" if auth_bridge_enabled else "disabled",
     }
 
     # Build annotations
@@ -1112,6 +1120,7 @@ def _build_tool_deployment_manifest(
                         KAGENTI_PROTOCOL_LABEL: VALUE_PROTOCOL_MCP,
                         KAGENTI_TRANSPORT_LABEL: VALUE_TRANSPORT_STREAMABLE_HTTP,
                         KAGENTI_FRAMEWORK_LABEL: framework,
+                        KAGENTI_INJECT_LABEL: "enabled" if auth_bridge_enabled else "disabled",
                     }
                 },
                 "spec": {
@@ -1173,6 +1182,7 @@ def _build_tool_statefulset_manifest(
     image_pull_secret: Optional[str] = None,
     shipwright_build_name: Optional[str] = None,
     storage_size: str = "1Gi",
+    auth_bridge_enabled: bool = False,
 ) -> dict:
     """
     Build a Kubernetes StatefulSet manifest for an MCP tool.
@@ -1214,6 +1224,7 @@ def _build_tool_statefulset_manifest(
         KAGENTI_FRAMEWORK_LABEL: framework,
         KAGENTI_WORKLOAD_TYPE_LABEL: WORKLOAD_TYPE_STATEFULSET,
         APP_KUBERNETES_IO_MANAGED_BY: KAGENTI_UI_CREATOR_LABEL,
+        KAGENTI_INJECT_LABEL: "enabled" if auth_bridge_enabled else "disabled",
     }
 
     # Build annotations
@@ -1249,6 +1260,7 @@ def _build_tool_statefulset_manifest(
                         KAGENTI_PROTOCOL_LABEL: VALUE_PROTOCOL_MCP,
                         KAGENTI_TRANSPORT_LABEL: VALUE_TRANSPORT_STREAMABLE_HTTP,
                         KAGENTI_FRAMEWORK_LABEL: framework,
+                        KAGENTI_INJECT_LABEL: "enabled" if auth_bridge_enabled else "disabled",
                     }
                 },
                 "spec": {
@@ -1498,6 +1510,7 @@ async def create_tool(
                     image_pull_secret=request.imagePullSecret,
                     storage_size=storage_size,
                     description=description,
+                    auth_bridge_enabled=request.authBridgeEnabled,
                 )
                 kube.create_statefulset(request.namespace, workload_manifest)
                 logger.info(
@@ -1515,6 +1528,7 @@ async def create_tool(
                     service_ports=service_ports,
                     image_pull_secret=request.imagePullSecret,
                     description=description,
+                    auth_bridge_enabled=request.authBridgeEnabled,
                 )
                 kube.create_deployment(request.namespace, workload_manifest)
                 logger.info(
@@ -1829,6 +1843,11 @@ async def finalize_tool_shipwright_build(
             if request.createHttpRoute is not None
             else tool_config_dict.get("createHttpRoute", False)
         )
+        auth_bridge_enabled = (
+            request.authBridgeEnabled
+            if request.authBridgeEnabled is not None
+            else tool_config_dict.get("authBridgeEnabled", False)
+        )
 
         # Determine workload type
         workload_type = request.workloadType or tool_config_dict.get(
@@ -1874,6 +1893,7 @@ async def finalize_tool_shipwright_build(
                 image_pull_secret=image_pull_secret,
                 shipwright_build_name=name,
                 storage_size=storage_size,
+                auth_bridge_enabled=auth_bridge_enabled,
             )
             kube.create_statefulset(namespace, workload_manifest)
             logger.info(
@@ -1892,6 +1912,7 @@ async def finalize_tool_shipwright_build(
                 service_ports=service_ports,
                 image_pull_secret=image_pull_secret,
                 shipwright_build_name=name,
+                auth_bridge_enabled=auth_bridge_enabled,
             )
             kube.create_deployment(namespace, workload_manifest)
             logger.info(

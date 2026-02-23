@@ -139,6 +139,9 @@ export const ImportToolPage: React.FC = () => {
   // HTTPRoute/Route creation
   const [createHttpRoute, setCreateHttpRoute] = useState(false);
 
+  // AuthBridge sidecar injection (default disabled for tools)
+  const [authBridgeEnabled, setAuthBridgeEnabled] = useState(false);
+
   // Validation state
   const [validated, setValidated] = useState<Record<string, 'success' | 'error' | 'default'>>({});
 
@@ -427,6 +430,7 @@ export const ImportToolPage: React.FC = () => {
         envVars: envVars.filter((ev) => ev.name && (ev.value !== undefined || ev.valueFrom)),
         servicePorts: showPodConfig ? servicePorts : undefined,
         createHttpRoute,
+        authBridgeEnabled,
       });
     } else {
       // Image deployment
@@ -447,6 +451,7 @@ export const ImportToolPage: React.FC = () => {
         imagePullSecret: imagePullSecret || undefined,
         servicePorts: showPodConfig ? servicePorts : undefined,
         createHttpRoute,
+        authBridgeEnabled,
       });
     }
   };
@@ -892,6 +897,17 @@ export const ImportToolPage: React.FC = () => {
                   label="Enable external access to the tool endpoint"
                   isChecked={createHttpRoute}
                   onChange={(_e, checked) => setCreateHttpRoute(checked)}
+                />
+              </FormGroup>
+
+              {/* AuthBridge Sidecar Injection */}
+              <FormGroup fieldId="authBridgeEnabled">
+                <Checkbox
+                  id="authBridgeEnabled"
+                  label="Enable AuthBridge sidecar injection"
+                  isChecked={authBridgeEnabled}
+                  onChange={(_e, checked) => setAuthBridgeEnabled(checked)}
+                  description="When enabled, the webhook injects AuthBridge sidecars (envoy-proxy, go-processor, client-registration) into the tool pod for token exchange."
                 />
               </FormGroup>
 

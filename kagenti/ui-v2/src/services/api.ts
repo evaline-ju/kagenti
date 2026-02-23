@@ -155,6 +155,8 @@ export const agentService = {
     }>;
     // HTTPRoute/Route creation
     createHttpRoute?: boolean;
+    // AuthBridge sidecar injection
+    authBridgeEnabled?: boolean;
     shipwrightConfig?: ShipwrightBuildConfig;
   }): Promise<{ success: boolean; name: string; namespace: string; message: string }> {
     return apiFetch('/agents', {
@@ -359,6 +361,7 @@ export const shipwrightService = {
         protocol: string;
       }>;
       createHttpRoute?: boolean;
+      authBridgeEnabled?: boolean;
       imagePullSecret?: string;
     }
   ): Promise<{ success: boolean; name: string; namespace: string; message: string }> {
@@ -440,6 +443,8 @@ export const toolService = {
     shipwrightConfig?: ShipwrightBuildConfig;
     // HTTPRoute/Route creation
     createHttpRoute?: boolean;
+    // AuthBridge sidecar injection
+    authBridgeEnabled?: boolean;
   }): Promise<{ success: boolean; name: string; namespace: string; message: string }> {
     return apiFetch('/tools', {
       method: 'POST',
@@ -569,6 +574,7 @@ export const toolShipwrightService = {
         protocol: string;
       }>;
       createHttpRoute?: boolean;
+      authBridgeEnabled?: boolean;
       imagePullSecret?: string;
     }
   ): Promise<{ success: boolean; name: string; namespace: string; message: string }> {
