@@ -576,6 +576,8 @@ export interface DashboardConfig {
   network: string;
   mcpInspector: string;
   mcpProxy: string;
+  mcpGatewayUrl: string;
+  mcpGatewayInternalUrl: string;
   keycloakConsole: string;
   domainName: string;
 }

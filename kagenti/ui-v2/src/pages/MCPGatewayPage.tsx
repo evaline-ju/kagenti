@@ -50,13 +50,14 @@ export const MCPGatewayPage: React.FC = () => {
     queryFn: () => configService.getDashboards(),
   });
 
-  // MCP Gateway in-cluster URL (used by MCP Inspector which runs in-cluster)
-  const mcpGatewayUrl = 'http://mcp-gateway-istio.gateway-system.svc.cluster.local:8080/mcp';
-  const encodedServerUrl = encodeURIComponent(mcpGatewayUrl);
+  // MCP Gateway in-cluster URL (used by MCP Inspector proxy which runs in-cluster)
+  const mcpGatewayInClusterUrl = dashboardConfig?.mcpGatewayInternalUrl
+    || 'http://mcp-gateway-istio.gateway-system.svc.cluster.local:8080/mcp';
 
   // Build MCP Inspector URL using config from backend
   const getMcpInspectorUrl = () => {
     if (!dashboardConfig?.mcpInspector) return null;
+    const encodedServerUrl = encodeURIComponent(mcpGatewayInClusterUrl);
     return `${dashboardConfig.mcpInspector}?serverUrl=${encodedServerUrl}&transport=streamable-http`;
   };
   const mcpInspectorUrl = getMcpInspectorUrl();

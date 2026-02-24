@@ -20,6 +20,13 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    - name: mcp-internal # in-cluster access via service hostname
+      hostname: "mcp-gateway-istio.{{ .Values.mcpGateway.namespaces.gatewaySystem }}.svc.cluster.local"
+      port: 8080
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: All
     - name: mcps
       port: 8080
       protocol: HTTP
@@ -39,8 +46,11 @@ spec:
   parentRefs:
     - name: http
       namespace: kagenti-system
+    - name: mcp-gateway
+      namespace: "{{ .Values.mcpGateway.namespaces.gatewaySystem }}"
   hostnames:
   - "{{ .Values.mcpGateway.hostname }}"
+  - "mcp-gateway-istio.{{ .Values.mcpGateway.namespaces.gatewaySystem }}.svc.cluster.local"
   rules:
     - matches:
         - path:

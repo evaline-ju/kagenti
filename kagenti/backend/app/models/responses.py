@@ -73,6 +73,8 @@ class DashboardConfigResponse(BaseModel):
     network: str
     mcpInspector: str
     mcpProxy: str
+    mcpGatewayUrl: str
+    mcpGatewayInternalUrl: str
     keycloakConsole: str
     domainName: str
 

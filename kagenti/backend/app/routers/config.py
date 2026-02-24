@@ -34,6 +34,11 @@ async def get_dashboard_config() -> DashboardConfigResponse:
         network=settings.network_dashboard_url or f"http://kiali.{domain}:8080",
         mcpInspector=settings.mcp_inspector_url or f"http://mcp-inspector.{domain}:8080",
         mcpProxy=settings.mcp_proxy_full_address or f"http://mcp-proxy.{domain}:8080",
+        mcpGatewayUrl=settings.mcp_gateway_url or f"http://mcp.127-0-0-1.sslip.io:8080/mcp",
+        mcpGatewayInternalUrl=(
+            settings.mcp_gateway_internal_url
+            or "http://mcp-gateway-istio.gateway-system.svc.cluster.local:8080/mcp"
+        ),
         keycloakConsole=(
             settings.keycloak_console_url
             or f"{settings.effective_keycloak_url}/admin/{settings.effective_keycloak_realm}/console/"

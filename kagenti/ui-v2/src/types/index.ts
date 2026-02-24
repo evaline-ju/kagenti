@@ -308,6 +308,8 @@ export interface DashboardConfig {
   traces: string;
   network: string;
   mcpInspector: string;
+  mcpGatewayUrl: string;
+  mcpGatewayInternalUrl: string;
 }
 
 // Auth types

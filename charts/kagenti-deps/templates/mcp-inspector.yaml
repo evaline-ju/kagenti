@@ -116,6 +116,19 @@ spec:
 
             echo "Inspector host: $INSPECTOR_HOST"
 
+            # Get the MCP proxy hostname (same pattern as inspector)
+            {{- if .Values.openshift }}
+            PROXY_HOST=$(kubectl get route mcp-proxy -n {{ .Release.Namespace }} -o jsonpath='{.spec.host}' 2>/dev/null)
+            PROXY_FULL_ADDRESS="https://${PROXY_HOST}"
+            {{- else }}
+            PROXY_HOST=$(kubectl get httproute mcp-proxy -n {{ .Release.Namespace }} -o jsonpath='{.spec.hostnames[0]}' 2>/dev/null)
+            if [ -z "$PROXY_HOST" ]; then
+              PROXY_HOST="mcp-proxy.{{ .Values.domain }}"
+            fi
+            PROXY_FULL_ADDRESS="http://${PROXY_HOST}:${PORT}"
+            {{- end }}
+            echo "Proxy full address: $PROXY_FULL_ADDRESS"
+
             # Create the ConfigMap using a heredoc and apply it
             echo "Creating/updating mcp-inspector-config ConfigMap..."
             kubectl apply -n {{ .Release.Namespace }} -f - <<EOF
@@ -126,6 +139,7 @@ spec:
             data:
               # Conditionally include the port if the PORT variable is not empty
               ALLOWED_ORIGINS: "${PROTOCOL}://${INSPECTOR_HOST}{{ if .Values.openshift | not }}:${PORT}{{ end }}"
+              MCP_PROXY_FULL_ADDRESS: "${PROXY_FULL_ADDRESS}"
             EOF
 
             echo "ConfigMap 'mcp-inspector-config' applied successfully."
@@ -150,6 +164,11 @@ spec:
               configMapKeyRef:
                 name: mcp-inspector-config
                 key: ALLOWED_ORIGINS
+          - name: MCP_PROXY_FULL_ADDRESS
+            valueFrom:
+              configMapKeyRef:
+                name: mcp-inspector-config
+                key: MCP_PROXY_FULL_ADDRESS
           - name: HOST
             value: 0.0.0.0
 ---

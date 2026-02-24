@@ -86,6 +86,8 @@ class Settings(BaseSettings):
     network_dashboard_url: str = ""
     mcp_inspector_url: str = ""
     mcp_proxy_full_address: str = ""
+    mcp_gateway_url: str = ""
+    mcp_gateway_internal_url: str = ""
     keycloak_console_url: str = ""
 
     # Authentication settings - from kagenti-ui-oauth-secret
