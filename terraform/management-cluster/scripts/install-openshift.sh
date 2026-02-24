@@ -46,6 +46,11 @@ if ! command -v jq &> /dev/null; then
     exit 1
 fi
 
+if ! command -v terraform &> /dev/null; then
+    log_error "terraform not found. Please install Terraform."
+    exit 1
+fi
+
 # Load cluster metadata from Terraform
 METADATA_FILE="$TF_DIR/output/cluster-metadata.json"
 if [ ! -f "$METADATA_FILE" ]; then
@@ -63,6 +68,83 @@ log_info "Cluster: $CLUSTER_NAME.$BASE_DOMAIN"
 log_info "Version: $OCP_VERSION"
 log_info "Region: $AWS_REGION"
 echo ""
+
+# Validate Terraform infrastructure is complete
+log_info "Validating Terraform infrastructure..."
+
+# Change to Terraform directory
+cd "$TF_DIR"
+
+# Get current workspace
+CURRENT_WORKSPACE=$(terraform workspace show)
+log_info "Using Terraform workspace: $CURRENT_WORKSPACE"
+
+# Expected minimum resource count for a complete deployment
+# VPC (1) + IGW (1) + Subnets (6) + EIPs (3) + NAT Gateways (3) + Route Tables (4) + RT Assocs (6) + Local Files (2) = 26
+EXPECTED_MIN_RESOURCES=20
+
+# Count resources in Terraform state
+RESOURCE_COUNT=$(terraform state list 2>/dev/null | wc -l)
+
+if [ "$RESOURCE_COUNT" -lt "$EXPECTED_MIN_RESOURCES" ]; then
+    log_error "Terraform state appears incomplete!"
+    log_error "Found $RESOURCE_COUNT resources, expected at least $EXPECTED_MIN_RESOURCES"
+    echo ""
+    log_info "Current resources in state:"
+    terraform state list
+    echo ""
+    log_error "This usually means 'terraform apply' did not complete successfully."
+    log_info "Please run the following to check and fix:"
+    echo ""
+    echo "  cd $TF_DIR"
+    echo "  terraform plan    # Review what's missing"
+    echo "  terraform apply   # Complete the infrastructure deployment"
+    echo ""
+    exit 1
+fi
+
+# Verify critical resources exist
+log_info "Checking for required resources..."
+MISSING_RESOURCES=()
+
+# Check for NAT Gateways (critical for worker node connectivity)
+NAT_COUNT=$(terraform state list 2>/dev/null | grep -c "aws_nat_gateway.mgmt_cluster" || true)
+if [ "$NAT_COUNT" -lt 3 ]; then
+    MISSING_RESOURCES+=("NAT Gateways (found $NAT_COUNT, need 3)")
+fi
+
+# Check for EIPs
+EIP_COUNT=$(terraform state list 2>/dev/null | grep -c "aws_eip.nat" || true)
+if [ "$EIP_COUNT" -lt 3 ]; then
+    MISSING_RESOURCES+=("Elastic IPs (found $EIP_COUNT, need 3)")
+fi
+
+# Check for route tables
+RT_COUNT=$(terraform state list 2>/dev/null | grep -c "aws_route_table" || true)
+if [ "$RT_COUNT" -lt 4 ]; then
+    MISSING_RESOURCES+=("Route Tables (found $RT_COUNT, need 4)")
+fi
+
+if [ ${#MISSING_RESOURCES[@]} -gt 0 ]; then
+    log_error "Missing critical infrastructure resources:"
+    for resource in "${MISSING_RESOURCES[@]}"; do
+        echo "  - $resource"
+    done
+    echo ""
+    log_error "Incomplete Terraform deployment detected."
+    log_info "Run 'terraform apply' to create missing resources before installing OpenShift."
+    echo ""
+    echo "  cd $TF_DIR"
+    echo "  terraform apply"
+    echo ""
+    exit 1
+fi
+
+log_success "Terraform infrastructure validation passed ($RESOURCE_COUNT resources)"
+echo ""
+
+# Return to script directory
+cd "$SCRIPT_DIR"
 
 # Setup installation directory
 INSTALL_DIR="$HOME/openshift-clusters/$CLUSTER_NAME"
