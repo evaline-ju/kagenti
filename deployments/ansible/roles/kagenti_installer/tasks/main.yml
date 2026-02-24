@@ -1411,6 +1411,24 @@
   ansible.builtin.import_tasks: 03_setup_kind_registry_dns.yaml
 
 #
+#  Namespace needed by MCP Gateway, that its own chart doesn't install
+#
+- name: Create gateway-system namespace for mcp-gateway
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: gateway-system
+        labels:
+          app.kubernetes.io/managed-by: Helm
+        annotations:
+          meta.helm.sh/release-name: kagenti
+          meta.helm.sh/release-namespace: kagenti-system
+  when: charts.mcpGateway.enabled | default(false)
+
+#
 #  MCP Gateway
 #
 - name: Install/upgrade mcp-gateway chart
