@@ -1,4 +1,4 @@
-name: E2E K8s 1.32.2 (Kind)
+name: E2E K8s 1.35.0 (Kind)
 
 on:
   push:
@@ -23,7 +23,7 @@ permissions:
 
 # Version tracking - keep in sync with deployments/ansible/kind/kind-config.yaml
 env:
-  K8S_VERSION: '1.32.2'  # Must match kindest/node version in kind-config.yaml
+  K8S_VERSION: '1.35.0'  # Must match kindest/node version in kind-config.yaml
 
 jobs:
   e2e-dev-kagenti-operator:
