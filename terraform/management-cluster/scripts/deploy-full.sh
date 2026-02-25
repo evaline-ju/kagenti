@@ -13,6 +13,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TF_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Cleanup terraform plan file on exit (contains sensitive data)
+trap 'rm -f "$TF_DIR/tfplan"' EXIT
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -41,13 +44,34 @@ for tool in "${REQUIRED_TOOLS[@]}"; do
 done
 log_success "All required tools found"
 
-# Get tfvars file from argument
-TFVARS_FILE="${1:-}"
+# Parse arguments (allow flags in any order)
+TFVARS_FILE=""
+SKIP_MCE=false
+
+for arg in "$@"; do
+    case "$arg" in
+        --skip-mce)
+            SKIP_MCE=true
+            ;;
+        *)
+            # Assume non-flag argument is the tfvars file
+            if [ -z "$TFVARS_FILE" ]; then
+                TFVARS_FILE="$arg"
+            else
+                log_error "Multiple tfvars files specified: $TFVARS_FILE and $arg"
+                exit 1
+            fi
+            ;;
+    esac
+done
+
+# Validate required argument
 if [ -z "$TFVARS_FILE" ]; then
     log_error "Usage: $0 <tfvars-file> [--skip-mce]"
     echo ""
     echo "Examples:"
     echo "  $0 terraform-kagenti-team.tfvars"
+    echo "  $0 --skip-mce terraform-420-test.tfvars"
     echo "  $0 terraform-420-test.tfvars --skip-mce"
     echo ""
     exit 1
@@ -56,11 +80,6 @@ fi
 if [ ! -f "$TF_DIR/$TFVARS_FILE" ]; then
     log_error "tfvars file not found: $TF_DIR/$TFVARS_FILE"
     exit 1
-fi
-
-SKIP_MCE=false
-if [[ "${2:-}" == "--skip-mce" ]]; then
-    SKIP_MCE=true
 fi
 
 # Extract cluster name from tfvars
