@@ -2,8 +2,11 @@
 # setup
 #
 
-- name: setup vars 
+- name: setup vars
   ansible.builtin.import_tasks: 01_setup_vars.yaml
+
+- name: preflight checks
+  ansible.builtin.import_tasks: 00_preflight.yaml
 
 - name: setup cluster
   ansible.builtin.import_tasks: 02_setup_cluster.yaml

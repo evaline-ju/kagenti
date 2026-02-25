@@ -203,6 +203,9 @@ kind_cluster_name: kagenti
 kind_images_preload: false
 # docker or podman
 container_engine: docker
+# Minimum resources for container runtime (preflight check)
+kind_min_memory_gb: 16
+kind_min_cpus: 4
 
 # Paths to configs in the deployments/scripts directory (relative to playbook_dir)
 kind_config: "./kind/kind-config.yaml"
