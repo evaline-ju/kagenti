@@ -8,6 +8,10 @@ on:
       - 'charts/**'
       - 'deployments/**'
       - '.github/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'kagenti/ui-v2/package.json'
+      - 'kagenti/ui-v2/package-lock.json'
   # NOTE: For PR E2E testing, use /run-e2e comment trigger (see e2e-hypershift-pr.yaml)
   # This workflow only handles push to main and manual dispatch.
   workflow_dispatch:
@@ -159,12 +163,24 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Run E2E tests
+      - name: Pre-flight checks
+        if: success()
+        run: bash .github/scripts/common/90-preflight-checks.sh
+        env:
+          KUBECONFIG: ${{ steps.create-cluster.outputs.cluster_kubeconfig }}
+
+      - name: Run backend E2E tests
         if: success()
         run: bash .github/scripts/hypershift/ci/80-run-e2e-tests.sh
         env:
           KUBECONFIG: ${{ steps.create-cluster.outputs.cluster_kubeconfig }}
           KAGENTI_CONFIG_FILE: deployments/envs/ocp_values.yaml
+
+      - name: Run UI E2E tests
+        if: success()
+        run: bash .github/scripts/common/92-run-ui-tests.sh
+        env:
+          KUBECONFIG: ${{ steps.create-cluster.outputs.cluster_kubeconfig }}
 
       # Security: Scan deployed cluster for vulnerabilities and misconfigurations
       - name: Run Trivy Kubernetes cluster scan

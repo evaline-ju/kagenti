@@ -1014,7 +1014,18 @@ if [ "$RUN_TEST" = "true" ]; then
         log_step "PYTEST_ARGS: $PYTEST_ARGS"
     fi
 
+    # Pre-flight checks (OTEL/MLflow pipeline readiness)
+    ./.github/scripts/common/90-preflight-checks.sh
+
+    # Backend E2E tests (pytest)
     ./.github/scripts/kagenti-operator/90-run-e2e-tests.sh
+
+    # UI E2E tests (Playwright)
+    if [ -f "./.github/scripts/common/92-run-ui-tests.sh" ]; then
+        ./.github/scripts/common/92-run-ui-tests.sh
+    else
+        log_step "Skipping UI tests (script not found)"
+    fi
 else
     log_phase "PHASE 4: Skipping E2E Tests"
 fi
