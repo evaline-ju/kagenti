@@ -10,6 +10,7 @@ flowchart TD
     GH -->|Weekly summary| WEEK["github:last-week"]:::github
     GH -->|Triage issues| ISSUES["github:issues"]:::github
     GH -->|PR health| PRS["github:prs"]:::github
+    GH -->|Review PR| PRREVIEW["github:pr-review"]:::github
 
     WEEK -->|calls| ISSUES
     WEEK -->|calls| PRS
@@ -43,6 +44,9 @@ What do you need?
     ├─ Analyze open PRs (CI status, review needed)
     │   → github:prs
     │
+    ├─ Review a specific PR (inline comments, conventions)
+    │   → github:pr-review
+    │
     └─ Create an issue with proper template
         → repo:issue
 ```
@@ -54,6 +58,7 @@ What do you need?
 | `github:my-status` | Personal dashboard: your open PRs, pending reviews, assigned issues |
 | `github:last-week` | Weekly report: merged PRs, new issues, CI health, priority analysis |
 | `github:issues` | Issue triage: stale, blocking, no attention, should-close |
+| `github:pr-review` | Automated PR review: inline comments, conventions, security checks |
 | `github:prs` | PR health: passing CI without review, stale, conflicts |
 
 ## Related Skills
