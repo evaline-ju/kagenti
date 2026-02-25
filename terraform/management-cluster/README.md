@@ -41,60 +41,107 @@ This Terraform configuration deploys an OpenShift Container Platform management 
 
 ## Quick Start
 
-### 1. Configure Variables
+### Option A: Automated Full Deployment (Recommended)
+
+This runs Terraform, OpenShift install, and MCE install with validation:
 
 ```bash
 cd terraform/management-cluster
 
-# Copy example files
-cp terraform.tfvars.example terraform.tfvars
-cp backend.tfvars.example backend.tfvars
+# Initialize Terraform
+terraform init
 
-# Edit with your values
-vim terraform.tfvars
-vim backend.tfvars
+# Run full deployment (creates workspace automatically)
+./scripts/deploy-full.sh terraform-kagenti-team.tfvars
+
+# Or skip MCE installation
+./scripts/deploy-full.sh terraform-kagenti-team.tfvars --skip-mce
 ```
 
-### 2. Initialize Terraform
+The script will:
+1. Create/select Terraform workspace
+2. Run `terraform plan` and prompt for confirmation
+3. Run `terraform apply` with full validation
+4. Verify infrastructure (NAT gateways, route tables, etc.)
+5. Install OpenShift (30-45 minutes)
+6. Optionally install MCE 2.10 and HyperShift
+
+### Option B: Manual Step-by-Step Deployment
+
+If you prefer to run each step manually:
+
+#### 1. Configure Variables
 
 ```bash
-# With S3 backend
-terraform init -backend-config=backend.tfvars
+cd terraform/management-cluster
 
-# Or without backend (local state)
+# Copy and edit your tfvars file
+cp terraform.tfvars.example terraform-my-cluster.tfvars
+vim terraform-my-cluster.tfvars
+```
+
+#### 2. Initialize Terraform
+
+```bash
+# Initialize (creates .terraform directory)
 terraform init
 ```
 
-### 3. Create Infrastructure
+#### 3. Create Terraform Workspace
+
+**IMPORTANT:** Always use workspaces to isolate cluster state:
+
+```bash
+# Create and switch to workspace for your cluster
+terraform workspace new my-cluster-name
+
+# Or select existing workspace
+terraform workspace select my-cluster-name
+```
+
+#### 4. Deploy Infrastructure with Terraform
 
 ```bash
 # Review plan
-terraform plan
+terraform plan -var-file=terraform-my-cluster.tfvars
 
-# Apply
-terraform apply
+# Apply (this must complete fully!)
+terraform apply -var-file=terraform-my-cluster.tfvars
+
+# CRITICAL: Verify infrastructure is complete
+terraform state list | wc -l
+# Should show 20+ resources, not just 8
+
+# Verify NAT gateways exist (critical for worker connectivity)
+terraform state list | grep nat_gateway
+# Should show 3 NAT gateways
 ```
 
 This creates:
 - VPC with public/private subnets across 3 AZs
-- NAT gateways for outbound connectivity
+- **NAT gateways for outbound connectivity** (critical!)
 - Route tables and security groups
 - Install config template for OpenShift
 
-### 4. Install OpenShift
+**⚠️ WARNING:** Do not proceed to OpenShift installation if Terraform state shows fewer than 20 resources. This means `terraform apply` did not complete successfully, and your cluster will be missing critical infrastructure like NAT gateways.
+
+#### 5. Install OpenShift
 
 ```bash
 ./scripts/install-openshift.sh
 ```
 
 This will:
+- **Validate Terraform infrastructure is complete**
 - Download pull secret (or use `~/.pullsecret.json`)
 - Generate SSH keypair
 - Create `install-config.yaml` from Terraform outputs
 - Run `openshift-install create cluster`
 - Wait for installation (30-45 minutes)
 
-### 5. Install MCE 2.10
+The script now includes automatic validation and will **fail early** if Terraform infrastructure is incomplete.
+
+#### 6. Install MCE 2.10
 
 ```bash
 export KUBECONFIG=~/openshift-clusters/<cluster-name>/auth/kubeconfig
@@ -177,6 +224,71 @@ Each hosted cluster adds minimal cost (workers only, control plane runs on mgmt 
 
 ## Troubleshooting
 
+### Installation Script Reports "Terraform state appears incomplete"
+
+**Symptoms:**
+```
+✗ Terraform state appears incomplete!
+✗ Found 8 resources, expected at least 20
+```
+
+**Cause:** Terraform apply did not complete successfully. This typically happens if:
+- Terraform was interrupted (Ctrl+C, connection lost)
+- AWS API errors during resource creation
+- Missing AWS permissions
+
+**Fix:**
+```bash
+cd terraform/management-cluster
+terraform workspace select <cluster-name>
+
+# Review what's missing
+terraform plan -var-file=terraform-<cluster-name>.tfvars
+
+# Complete the deployment
+terraform apply -var-file=terraform-<cluster-name>.tfvars
+
+# Verify completion
+terraform state list | grep -E "(nat_gateway|eip\.nat|route_table)"
+# Should show: 3 NAT gateways, 3 EIPs, 4 route tables
+```
+
+### Cluster Has No Internet Connectivity (Workers Can't Pull Images)
+
+**Symptoms:**
+- Pods stuck in `ImagePullBackOff` or `ErrImagePull`
+- `dial tcp: i/o timeout` errors when pulling from quay.io, registry.redhat.io
+- Load balancer health checks failing
+- Authentication operator degraded
+
+**Cause:** Missing NAT gateways - worker nodes in private subnets cannot reach the internet.
+
+**Diagnosis:**
+```bash
+# Check if NAT gateways exist
+aws ec2 describe-nat-gateways --region us-east-1 \
+  --filter "Name=vpc-id,Values=<vpc-id>" \
+  --query 'NatGateways[*].[NatGatewayId,State]'
+
+# Should show 3 NAT gateways in "available" state
+# If empty or shows "deleted", NAT gateways are missing
+```
+
+**Fix:**
+Either:
+1. **Recommended:** Destroy and recreate with complete Terraform apply:
+   ```bash
+   openshift-install destroy cluster --dir ~/openshift-clusters/<name>
+   terraform destroy -var-file=terraform-<name>.tfvars
+   # Then redeploy using scripts/deploy-full.sh
+   ```
+
+2. **Manual fix (if cluster must be preserved):**
+   ```bash
+   # Create NAT gateways manually and import to Terraform
+   # See: docs/troubleshooting/missing-nat-gateways.md
+   ```
+
 ### OpenShift Installation Fails
 
 Check logs:
@@ -188,6 +300,7 @@ Common issues:
 - Route53 hosted zone not found → create hosted zone for base domain
 - AWS quota limits → request quota increase
 - Subnet CIDR conflicts → adjust `vpc_cidr` in tfvars
+- **Missing infrastructure** → verify terraform apply completed (see above)
 
 ### MCE Installation Fails
 
