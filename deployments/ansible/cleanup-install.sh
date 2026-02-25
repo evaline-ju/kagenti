@@ -33,7 +33,7 @@ for ns in "${TEAM_NAMESPACES[@]}"; do
     kubectl delete agents.agent.kagenti.dev --all -n "$ns" --ignore-not-found 2>/dev/null || true
     kubectl delete agentcards.agent.kagenti.dev --all -n "$ns" --ignore-not-found 2>/dev/null || true
     # Delete MCP Gateway CRs
-    kubectl delete mcpservers.mcp.kagenti.com --all -n "$ns" --ignore-not-found 2>/dev/null || true
+    kubectl delete mcpserverregistrations.mcp.kagenti.com --all -n "$ns" --ignore-not-found 2>/dev/null || true
   fi
 done
 echo ""
