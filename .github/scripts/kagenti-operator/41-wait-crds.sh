@@ -13,7 +13,7 @@ log_step "41" "Waiting for Kagenti Operator CRDs"
 CRDS=(
     "mcpserverregistrations.mcp.kagenti.com"
     "mcpvirtualservers.mcp.kagenti.com"
-    "mcpserverregistrations.mcp.kagenti.com"
+    "mcpgatewayextensions.mcp.kagenti.com"
 )
 
 for crd in "${CRDS[@]}"; do
