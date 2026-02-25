@@ -3,6 +3,7 @@
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { isValidEnvVarName } from '../utils/validation';
 import {
   PageSection,
   Title,
@@ -242,15 +243,6 @@ export const ImportAgentPage: React.FC = () => {
   };
 
   // Environment variable handlers
-  // Validate environment variable name according to Kubernetes rules
-  const isValidEnvVarName = (name: string): boolean => {
-    if (!name) return false;
-    // Kubernetes env var name pattern: must start with letter or underscore,
-    // followed by any combination of letters, digits, or underscores
-    const pattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
-    return pattern.test(name);
-  };
-
   const addEnvVar = () => {
     setEnvVars([...envVars, { name: '', value: '' }]);
   };
