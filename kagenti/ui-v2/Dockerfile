@@ -21,7 +21,7 @@ COPY ui-v2/ .
 RUN npm run build
 
 # Stage 2: Serve with nginx
-FROM nginx:1.25-alpine
+FROM nginx:1.27-alpine
 
 # Copy nginx configuration
 COPY ui-v2/nginx.conf /etc/nginx/conf.d/default.conf
