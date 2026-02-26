@@ -45,6 +45,12 @@
         timeout: "{{ helm_wait_timeout }}s"
         values:
           profile: ambient
+          meshConfig:
+            extensionProviders:
+            - name: otel-tracing
+              opentelemetry:
+                service: otel-collector.kagenti-system.svc.cluster.local
+                port: 4317
       register: istiod_result
       retries: 3
       delay: 15
