@@ -251,14 +251,14 @@ Kagenti is a cloud-native middleware platform that provides framework-neutral, s
 
 **Description**: Administrators who manage the MCP Gateway infrastructure and protocol routing.
 
-**Primary Repository**: [mcp-gateway](https://github.com/kagenti/mcp-gateway)
+**Primary Repository**: [mcp-gateway](https://github.com/Kuadrant/mcp-gateway)
 
 **Key Responsibilities**:
 
 - Configure and maintain Envoy-based MCP Gateway
 - Manage HTTPRoute configurations for tool discovery
 - Set up protocol federation and load balancing
-- Configure MCPServer custom resources
+- Configure MCPServerRegistration custom resources
 - Troubleshoot MCP protocol communication issues
 - Monitor gateway performance and scaling
 - Manage gateway security and access control
@@ -282,7 +282,7 @@ Kagenti is a cloud-native middleware platform that provides framework-neutral, s
 
 1. Understand Envoy-based gateway architecture
 2. Configure HTTPRoute resources for tool registration
-3. Set up MCPServer custom resources
+3. Set up MCPServerRegistration custom resources
 4. Monitor gateway performance and scaling
 5. Troubleshoot protocol routing issues
 

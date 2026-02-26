@@ -61,18 +61,17 @@ spec:
       port: 8000' | kubectl apply -f -
 ```
 
-and then create an `MCPServer` Custom Resource:
+and then create an `MCPServerRegistration` Custom Resource:
 
 ```
 echo 'apiVersion: mcp.kagenti.com/v1alpha1
-kind: MCPServer
+kind: MCPServerRegistration
 metadata:
   name: weather-tool-servers
   namespace: default
 spec:
   toolPrefix: weather_
 
-  # Reference all three test MCP servers via their HTTPRoutes
   targetRef:
     group: gateway.networking.k8s.io
     kind: HTTPRoute
@@ -178,11 +177,11 @@ spec:
 EOF
 ```
 
-Finally, we create the MCPServer resource with the access token:
+Finally, we create the MCPServerRegistration resource with the access token:
 ```
 kubectl apply -f - <<EOF
 apiVersion: mcp.kagenti.com/v1alpha1
-kind: MCPServer
+kind: MCPServerRegistration
 metadata:
   name: slack-tool-servers
   namespace: default
@@ -201,7 +200,7 @@ EOF
 
 It could take a while (up to 60s) for the newly created token to be discovered by the MCP Broker. To check if it is ready, run:
 ```
-$ kubectl get mcpservers slack-tool-servers -o yaml
+$ kubectl get mcpserverregistrations slack-tool-servers -o yaml
 ```
 
 and make sure the status field shows `Ready`, e.g.,
@@ -209,7 +208,7 @@ and make sure the status field shows `Ready`, e.g.,
 status:
   conditions:
   - lastTransitionTime: "2025-10-01T19:28:33Z"
-    message: MCPServer successfully reconciled and validated 1 servers with 2 tools
+    message: MCPServerRegistration successfully reconciled and validated 1 servers with 2 tools
     reason: Ready
     status: "True"
     type: Ready
