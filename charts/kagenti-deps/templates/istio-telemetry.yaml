@@ -6,6 +6,13 @@ metadata:
   namespace: {{ .Values.istio.namespace | default "istio-system" }}
   labels:
     {{- include "kagenti.labels" . | nindent 4 }}
+  annotations:
+    # Post-install hook ensures the Istio Telemetry CRD is fully established
+    # before this resource is applied. Without this, the cross-namespace
+    # resource (istio-system) can silently fail during initial chart install.
+    "helm.sh/hook": post-install, post-upgrade
+    "helm.sh/hook-weight": "2"
+    "helm.sh/hook-delete-policy": before-hook-creation
 spec:
   tracing:
   - providers:

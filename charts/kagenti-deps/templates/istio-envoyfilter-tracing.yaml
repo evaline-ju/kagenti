@@ -1,0 +1,73 @@
+{{- if and .Values.components.otel.enabled .Values.components.ingressGateway.enabled (not .Values.openshift) }}
+{{- /*
+  In Istio Ambient mode, Envoy's outbound clusters have an istio.metadata_exchange
+  network filter that prepends a custom protocol header on TCP connections. The OTel
+  Collector's gRPC server doesn't understand this prefix, causing "protocol error"
+  resets on trace export.
+
+  This EnvoyFilter works around the issue by:
+  1. Adding a STRICT_DNS cluster that connects directly to the OTel Collector
+     without the metadata exchange filter.
+  2. Patching the gateway's HCM tracing provider to use this direct cluster
+     instead of the default outbound|4317 cluster.
+*/}}
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: otel-gateway-tracing
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kagenti.labels" . | nindent 4 }}
+spec:
+  workloadSelector:
+    labels:
+      gateway.networking.k8s.io/gateway-name: {{ .Values.httpGateway.name | default "http" }}
+  configPatches:
+  # Add a direct cluster to the OTel Collector gRPC endpoint.
+  # Unlike Istio-managed outbound clusters, this has no metadata_exchange filter.
+  - applyTo: CLUSTER
+    patch:
+      operation: ADD
+      value:
+        name: otel-collector-direct
+        type: STRICT_DNS
+        connect_timeout: 5s
+        lb_policy: ROUND_ROBIN
+        typed_extension_protocol_options:
+          envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+            "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+            explicit_http_config:
+              http2_protocol_options: {}
+        load_assignment:
+          cluster_name: otel-collector-direct
+          endpoints:
+          - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: otel-collector.{{ .Release.Namespace }}.svc.cluster.local
+                    port_value: 4317
+  # Patch the gateway's HCM tracing provider to use the direct cluster.
+  - applyTo: NETWORK_FILTER
+    match:
+      context: GATEWAY
+      listener:
+        filterChain:
+          filter:
+            name: envoy.filters.network.http_connection_manager
+    patch:
+      operation: MERGE
+      value:
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          tracing:
+            provider:
+              name: envoy.tracers.opentelemetry
+              typed_config:
+                "@type": type.googleapis.com/envoy.config.trace.v3.OpenTelemetryConfig
+                grpc_service:
+                  envoy_grpc:
+                    cluster_name: otel-collector-direct
+                    authority: otel-collector.{{ .Release.Namespace }}.svc.cluster.local
+                service_name: http-istio.{{ .Release.Namespace }}
+{{- end }}

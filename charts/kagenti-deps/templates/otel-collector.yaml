@@ -40,6 +40,11 @@ spec:
     metadata:
       labels:
         app: otel-collector
+        {{- if not $.Values.openshift }}
+        # Exclude from Istio Ambient mesh data plane so the gateway's Envoy
+        # tracer can reach the gRPC receiver without HBONE tunneling.
+        istio.io/dataplane-mode: "none"
+        {{- end }}
     spec:
       serviceAccountName: otel-collector
       containers:
