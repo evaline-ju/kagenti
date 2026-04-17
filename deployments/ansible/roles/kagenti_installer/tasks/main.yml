@@ -1397,11 +1397,59 @@
 #
 #  MCP Gateway
 #
+# WORKAROUND: Pull chart locally, apply CRDs, and patch controller deployment labels.
+# Helm does not upgrade CRDs on chart upgrade, so we apply them manually.
+# The upstream chart (<=0.5.1) uses the same app.kubernetes.io/name label for both
+# the controller and broker-router pods, causing the broker service to route traffic
+# to the controller (which doesn't serve MCP).
+# See: https://github.com/Kuadrant/mcp-gateway/issues/XXX
+- name: Pull mcp-gateway chart, apply CRDs, and patch controller labels
+  ansible.builtin.shell: |
+    set -euo pipefail
+    CHART_DIR="{{ ansible_env.HOME }}/.cache/mcp-gateway-chart"
+    rm -rf "$CHART_DIR"
+    mkdir -p "$CHART_DIR"
+    helm pull oci://ghcr.io/kuadrant/charts/mcp-gateway \
+      --version "{{ charts.mcpGateway.version }}" \
+      --untar --untardir "$CHART_DIR"
+
+    # Apply CRDs (Helm does not upgrade CRDs)
+    kubectl apply --server-side -f "$CHART_DIR/mcp-gateway/crds/"
+
+    # Patch controller deployment template: use controller-specific label for
+    # app.kubernetes.io/name so the controller pod is NOT selected by the
+    # broker-router Service (which selects app.kubernetes.io/name: mcp-gateway)
+    TMPL="$CHART_DIR/mcp-gateway/templates/deployment-controller.yaml"
+    python3 -c "
+    t = open('$TMPL').read()
+    t = t.replace(
+      '{{- include \"mcp-gateway.selectorLabels\" . | nindent 6 }}\n      component: controller',
+      'app.kubernetes.io/name: {{ include \"mcp-gateway.name\" . }}-controller\n      app.kubernetes.io/instance: {{ .Release.Name }}\n      component: controller'
+    )
+    t = t.replace(
+      '{{- include \"mcp-gateway.selectorLabels\" . | nindent 8 }}\n        component: controller',
+      'app.kubernetes.io/name: {{ include \"mcp-gateway.name\" . }}-controller\n        app.kubernetes.io/instance: {{ .Release.Name }}\n        component: controller'
+    )
+    open('$TMPL', 'w').write(t)
+    "
+    echo "$CHART_DIR/mcp-gateway"
+  register: patched_chart_path
+  when: charts.mcpGateway.enabled | default(false)
+
+- name: Delete mcp-gateway-controller deployment for label selector change
+  kubernetes.core.k8s:
+    api_version: apps/v1
+    kind: Deployment
+    name: mcp-gateway-controller
+    namespace: "{{ charts.mcpGateway.namespace }}"
+    state: absent
+  ignore_errors: true
+  when: charts.mcpGateway.enabled | default(false)
+
 - name: Install/upgrade mcp-gateway chart
   kubernetes.core.helm:
     release_name: mcp-gateway
-    chart_ref: oci://ghcr.io/kuadrant/charts/mcp-gateway
-    chart_version: "{{ charts.mcpGateway.version }}"
+    chart_ref: "{{ patched_chart_path.stdout_lines[-1] }}"
     release_namespace: "{{ charts.mcpGateway.namespace }}"
     create_namespace: true
     state: present
@@ -1417,6 +1465,75 @@
   retries: 3
   delay: 15
   until: mcp_gateway_result is not failed
+  when: charts.mcpGateway.enabled | default(false)
+
+# --- mcp-gateway v0.5.0 OTEL patching (deployment: mcp-gateway-broker-router, container: mcp-broker-router) ---
+# - name: Patch mcp-gateway-broker-router with OTEL env vars
+#   kubernetes.core.k8s:
+#     api_version: apps/v1
+#     kind: Deployment
+#     name: mcp-gateway-broker-router
+#     namespace: "{{ charts.mcpGateway.namespace | default('mcp-system') }}"
+#     state: patched
+#     definition:
+#       spec:
+#         template:
+#           spec:
+#             containers:
+#               - name: mcp-broker-router
+#                 env:
+#                   - name: NAMESPACE
+#                     valueFrom:
+#                       fieldRef:
+#                         fieldPath: metadata.namespace
+#                   - name: OTEL_EXPORTER_OTLP_ENDPOINT
+#                     value: "http://otel-collector.kagenti-system.svc.cluster.local:8335"
+#                   - name: OTEL_EXPORTER_OTLP_INSECURE
+#                     value: "true"
+#                   - name: OTEL_EXPORTER_OTLP_PROTOCOL
+#                     value: "http/protobuf"
+#   when: charts.mcpGateway.enabled | default(false)
+
+# --- mcp-gateway v0.5.1+ OTEL patching (deployment: mcp-gateway, container: mcp-gateway) ---
+# NOTE: In v0.5.1+, the controller manages the broker-router deployment and will revert
+# manual env var patches on the next reconcile. This patch will apply but may not persist.
+# Native OTEL config support is needed from the mcp-gateway chart.
+- name: Wait for mcp-gateway controller to create broker-router deployment
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: mcp-gateway
+    namespace: "{{ charts.mcpGateway.namespace | default('mcp-system') }}"
+  register: broker_router_deploy
+  retries: 30
+  delay: 10
+  until: broker_router_deploy.resources | length > 0
+  when: charts.mcpGateway.enabled | default(false)
+
+- name: Patch mcp-gateway broker-router with OTEL env vars
+  kubernetes.core.k8s:
+    api_version: apps/v1
+    kind: Deployment
+    name: mcp-gateway
+    namespace: "{{ charts.mcpGateway.namespace | default('mcp-system') }}"
+    state: patched
+    definition:
+      spec:
+        template:
+          spec:
+            containers:
+              - name: mcp-gateway
+                env:
+                  - name: NAMESPACE
+                    valueFrom:
+                      fieldRef:
+                        fieldPath: metadata.namespace
+                  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+                    value: "http://otel-collector.kagenti-system.svc.cluster.local:8335"
+                  - name: OTEL_EXPORTER_OTLP_INSECURE
+                    value: "true"
+                  - name: OTEL_EXPORTER_OTLP_PROTOCOL
+                    value: "http/protobuf"
   when: charts.mcpGateway.enabled | default(false)
 
 #
