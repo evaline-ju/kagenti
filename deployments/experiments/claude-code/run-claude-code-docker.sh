@@ -1,7 +1,7 @@
 #!/bin/bash
 # Deploy Claude Code CLI in a Docker container backed by a LiteLLM proxy.
 # Usage:
-#   0. Build the claude-code-agent:latest-amd64 (or update IMAGE_TAG for the claude-code-agent)
+#   0. Build the claude-code-agent:latest (or update IMAGE_TAG for the claude-code-agent)
 #   1. Set LITELLM_API_KEY in environment before running.
 #   2. Optionally override LITELLM_BASE_URL and CLAUDE_MODEL.
 #   3. ./run-claude-code-docker.sh
@@ -27,7 +27,7 @@ LITELLM_API_KEY="${LITELLM_API_KEY:?ERROR: Set LITELLM_API_KEY (your LiteLLM aut
 CLAUDE_MODEL="${CLAUDE_MODEL:-claude-sonnet-4-6}"
 
 # --- Build image if not present ----------------------------------------------
-IMAGE_TAG="claude-code-agent:latest-amd64"
+IMAGE_TAG="claude-code-agent:latest"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if ! docker image inspect "$IMAGE_TAG" &>/dev/null; then

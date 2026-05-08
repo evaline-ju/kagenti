@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hermes-dashboard
+  namespace: hermes
+  labels:
+    app.kubernetes.io/name: hermes-dashboard
+    app.kubernetes.io/component: dashboard
+  annotations:
+    description: "Hermes dashboard — read-only UI for sessions, memories, skills"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hermes-dashboard
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: hermes-dashboard
+    spec:
+      containers:
+      - name: dashboard
+        image: nousresearch/hermes-agent:latest
+        imagePullPolicy: IfNotPresent
+        args: ["dashboard", "--host", "0.0.0.0", "--no-open", "--insecure"]
+        ports:
+        - name: dashboard
+          containerPort: 9119
+          protocol: TCP
+        env:
+        - name: HERMES_HOME
+          value: /opt/data
+        # Dashboard needs to reach the gateway API for live data
+        - name: GATEWAY_HEALTH_URL
+          value: "http://hermes-agent.hermes.svc.cluster.local:8642"
+        readinessProbe:
+          tcpSocket:
+            port: 9119
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 6
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+        volumeMounts:
+        - name: hermes-data
+          mountPath: /opt/data
+          readOnly: true
+      volumes:
+      - name: hermes-data
+        persistentVolumeClaim:
+          claimName: hermes-data

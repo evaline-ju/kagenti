@@ -1,0 +1,135 @@
+# Secret is defined in hermes-secret.yaml (gitignored).
+# Create it before applying this deployment:
+#
+#   kubectl create secret generic hermes-secrets -n hermes \
+#     --from-literal=LITELLM_API_KEY=your-token \
+#     --from-literal=API_SERVER_KEY=hermes-experiment \
+#     --from-literal=DISCORD_BOT_TOKEN=your-discord-bot-token   # optional
+#
+# Or copy hermes-secret.example.yaml → hermes-secret.yaml and fill in values.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hermes-agent
+  namespace: hermes
+  labels:
+    app.kubernetes.io/name: hermes-agent
+    app.kubernetes.io/component: agent
+  annotations:
+    description: "Hermes agent — state management experiment (LiteLLM backend)"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hermes-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: hermes-agent
+    spec:
+      initContainers:
+      - name: config-init
+        image: nousresearch/hermes-agent:latest
+        imagePullPolicy: Always
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          HERMES_HOME=/opt/data
+          INSTALL_DIR=/opt/hermes
+          mkdir -p "$HERMES_HOME"/{cron,sessions,logs,hooks,memories,skills,skins,plans,workspace,home}
+          [ ! -f "$HERMES_HOME/.env" ] && cp "$INSTALL_DIR/.env.example" "$HERMES_HOME/.env"
+          [ ! -f "$HERMES_HOME/config.yaml" ] && cp "$INSTALL_DIR/cli-config.yaml.example" "$HERMES_HOME/config.yaml"
+          [ ! -f "$HERMES_HOME/SOUL.md" ] && cp "$INSTALL_DIR/docker/SOUL.md" "$HERMES_HOME/SOUL.md"
+          # Patch config for LiteLLM proxy
+          CONFIG="$HERMES_HOME/config.yaml"
+          sed -i 's|provider: "auto"|provider: "custom"|' "$CONFIG"
+          sed -i 's|default: "anthropic/claude-opus-4.6"|default: "'"$HERMES_MODEL"'"|' "$CONFIG"
+          sed -i 's|base_url: "https://openrouter.ai/api/v1"|base_url: "'"$LITELLM_BASE_URL"'"|' "$CONFIG"
+          # Context length: leave at default for frontier models (128k+)
+          # Override only if your LiteLLM model reports wrong context length
+          # sed -i 's|# context_length: 131072|context_length: 131072|' "$CONFIG"
+          echo "Config init complete"
+        env:
+        - name: HERMES_MODEL
+          value: "claude-sonnet-4-20250514"
+        - name: LITELLM_BASE_URL
+          value: "https://your-litellm-host/v1"
+        volumeMounts:
+        - name: hermes-data
+          mountPath: /opt/data
+      containers:
+      - name: hermes
+        image: nousresearch/hermes-agent:latest
+        imagePullPolicy: Always
+        args: ["gateway", "run"]
+        ports:
+        - name: gateway
+          containerPort: 8642
+          protocol: TCP
+        - name: dashboard
+          containerPort: 9119
+          protocol: TCP
+        - name: webhook
+          containerPort: 8644
+          protocol: TCP
+        env:
+        - name: HERMES_HOME
+          value: /opt/data
+        # LiteLLM proxy — OpenAI-compatible endpoint
+        - name: HERMES_INFERENCE_PROVIDER
+          value: "custom"
+        - name: HERMES_MODEL
+          value: "claude-sonnet-4-20250514"
+        # LiteLLM API key from Secret
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: hermes-secrets
+              key: LITELLM_API_KEY
+        - name: OPENAI_API_BASE
+          value: "https://your-litellm-host/v1"
+        # Gateway API
+        - name: API_SERVER_HOST
+          value: "0.0.0.0"
+        - name: API_SERVER_KEY
+          valueFrom:
+            secretKeyRef:
+              name: hermes-secrets
+              key: API_SERVER_KEY
+        # Discord
+        - name: DISCORD_BOT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hermes-secrets
+              key: DISCORD_BOT_TOKEN
+        # - name: DISCORD_ALLOWED_USERS
+        #   value: "your-discord-user-id"
+        - name: GATEWAY_ALLOW_ALL_USERS
+          value: "true"
+        readinessProbe:
+          tcpSocket:
+            port: 8642
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          failureThreshold: 6
+        livenessProbe:
+          tcpSocket:
+            port: 8642
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: "1"
+            memory: 2Gi
+        volumeMounts:
+        - name: hermes-data
+          mountPath: /opt/data
+      volumes:
+      - name: hermes-data
+        persistentVolumeClaim:
+          claimName: hermes-data
