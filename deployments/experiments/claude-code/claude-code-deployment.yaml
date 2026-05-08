@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: claude-code-agent
+  namespace: claude-code
+  labels:
+    app.kubernetes.io/name: claude-code-agent
+    app.kubernetes.io/component: agent
+  annotations:
+    description: "Claude Code agent — headless CLI in a pod, backed by LiteLLM"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: claude-code-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: claude-code-agent
+    spec:
+      containers:
+      - name: claude-code
+        image: claude-code-agent:latest
+        # Build locally with: docker build -t claude-code-agent:latest .
+        # Load into Kind with: kind load docker-image claude-code-agent:latest --name <cluster>
+        # IfNotPresent: use `kind load docker-image` to pre-load, avoid registry pull
+        imagePullPolicy: IfNotPresent
+        # sleep infinity keeps the pod alive; exec in to run `claude -p "..."` prompts
+        command: ["sleep", "infinity"]
+        env:
+        # LiteLLM proxy — Claude Code uses OpenAI-compatible env vars
+        - name: ANTHROPIC_BASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: claude-code-secret
+              key: litellm-base-url
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: claude-code-secret
+              key: litellm-api-key
+        - name: ANTHROPIC_MODEL
+          value: "claude-sonnet-4-6"
+        # Note: Claude Code appends /v1 itself — do NOT include /v1 in the base URL
+
+        - name: DISABLE_AUTOUPDATER
+          value: "1"
+        - name: DISABLE_TELEMETRY
+          value: "1"
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi
+        volumeMounts:
+        - name: claude-code-data
+          mountPath: /home/agent/.claude
+      volumes:
+      - name: claude-code-data
+        persistentVolumeClaim:
+          claimName: claude-code-data
