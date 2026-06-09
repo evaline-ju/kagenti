@@ -128,7 +128,7 @@ JSONL=$(kubectl exec -n claude-code claude-code-agent -- \
 
 curl -s -X POST "http://localhost:8000/sessions/${SESSION_ID}/transcript" \
   -H "Content-Type: application/json" \
-  -d "{\"agent_name\":\"claude-code\",\"jsonl\":$(echo "$JSONL" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}"
+  -d "{\"agent_name\":\"claude-code\",\"cwd\":\"/home/agent\",\"jsonl\":$(echo "$JSONL" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}"
 
 # Verify backup size
 kubectl exec -n platform deploy/redis -- redis-cli STRLEN session:${SESSION_ID}:transcript

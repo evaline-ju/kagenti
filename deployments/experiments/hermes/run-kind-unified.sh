@@ -21,6 +21,7 @@ kubectl create secret generic hermes-secrets -n hermes \
   --from-literal=LITELLM_API_KEY="$(kubectl get secret -n claude-code claude-code-secret -o jsonpath='{.data.litellm-api-key}' | base64 -d)" \
   --from-literal=LITELLM_BASE_URL="$(kubectl get secret -n claude-code claude-code-secret -o jsonpath='{.data.litellm-base-url}' | base64 -d)" \
   --from-literal=API_SERVER_KEY=hermes-experiment \
+
   --dry-run=client -o yaml | kubectl apply -f -
 
 echo "3. Creating hook script ConfigMap..."

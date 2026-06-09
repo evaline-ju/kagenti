@@ -194,17 +194,21 @@ Approximate resume used isolated `claude -p` calls (each a new session) and inje
 ## 6. Limitations and Open Questions
 
 1. **Mid-turn state is always lost** — if a pod dies during an LLM call, that in-flight turn is never persisted. Neither harness supports checkpointing mid-inference.
-2. **Claude Code JSONL path is fragile** — depends on undocumented internal path format (`~/.claude/projects/<cwd-derived>/`). The path is derived from container CWD (`/home/agent` → `-home-agent`). May break on version upgrades.
+2. **Claude Code JSONL path depends on CWD** — Claude Code stores transcripts at `~/.claude/projects/<cwd-derived>/<sessionId>.jsonl`, where the CWD is encoded by replacing `/` with `-` (e.g., `/home/agent` → `-home-agent`). CWD is not stored in an env var — it's the process working directory at runtime. To make restore robust, the `POST /sessions/{id}/transcript` endpoint now accepts `cwd` and stores it in the session hash. On restore, `restore-transcript.py` reads `cwd` back from the API response and derives the correct path dynamically (no hardcoded assumption). Verified working: init container log shows correct path derived from Redis-stored CWD.
 3. **Token cost on resume** — full prior conversation is re-sent as input tokens. For Claude Code: `cache_read_input_tokens: 39752` on a 2-turn session. Scales linearly with conversation length.
 4. **Hermes memories/skills lost** — only conversation turns are in Redis; PVC-resident agent state (memories, learned skills) is gone after PVC loss.
 5. **Backup race condition** — if the pod dies before the post-turn backup completes, the latest turn is lost from Redis (though it may still be in JSONL if PVC survives).
 6. **Single session recovery only** — the recovery-context endpoint picks the most recent session. Multiple concurrent sessions per agent are not handled.
-7. **Hermes: stateless replay, not true resume** — the gateway holds no inter-call state. Each call creates a new session; recovery means carrying forward message context, not restoring an interrupted session. True resume would require either (a) using Hermes in stateful mode (SQLite-backed sessions) with backup/restore of the SQLite DB, or (b) a session-aware proxy that owns session state externally and replays into the stateless gateway transparently. Note: Hermes stateful mode is SQLite-only (no pluggable backend), so (a) means backup/restore of the SQLite file itself.
+7. **Hermes: stateless replay, not true resume — SQLite restore doesn't help** — the gateway holds no inter-call state. Each `/v1/chat/completions` call is independent; the gateway writes to SQLite but never reads back from it for session continuity. Backing up and restoring `state.db` would preserve historical records but the gateway would still not use them to "resume" — the next call still requires the caller to provide the full message array. True resume requires either (a) using Hermes in interactive/CLI mode (not gateway mode), where SQLite backup/restore would work, or (b) a session-aware proxy that maintains the message array externally. We chose gateway mode because it exposes an HTTP API (curl-testable, composable, load-balanceable); interactive mode requires a TTY and can't be driven programmatically from outside the pod.
 8. **state-query-api is Redis-specific** — all storage operations (turns, transcripts, indexes, markers) use Redis data structures directly with no abstraction layer. A natural generalization would split by data shape:
    - **Turns + indexes + markers** → keep in Redis (small, frequently accessed, query-by-session)
    - **Transcripts** (JSONL blobs, 8-50KB+, write-once/read-once) → move to object storage (S3/MinIO)
-   
+
    The API contract (endpoints, request/response shapes) would stay unchanged; only the backend implementation switches via a `TranscriptStore` interface with `put()`/`get()` methods and an env var to select backend (`TRANSCRIPT_STORE=s3|redis`).
+
+9. **PVC snapshots** — VolumeSnapshots could back up the whole agent PVC instead of per-turn externalization. Recovers everything (including Hermes memories/skills) but is slow (seconds vs. milliseconds), all-or-nothing (can't address individual sessions), and cluster-scoped. Better suited to workspace recovery than session state. Not tested (Kind doesn't support VolumeSnapshots).
+
+10. **Is PVC loss realistic?** — With network-attached storage (EBS, Ceph), PVs are durable. PVC loss is realistic for local provisioners (Kind, k3s), `reclaimPolicy: Delete` + accidental deletion, and cluster teardown. In production, the stronger argument for externalization is session routing (PV survives but new pod doesn't know which session to resume), write consistency on crash, and cross-cluster portability — not PV durability.
 
 ---
 

@@ -26,9 +26,9 @@ session_id = data["session_id"]
 jsonl_content = data["jsonl"]
 
 # Claude Code stores transcripts under ~/.claude/projects/<project-key>/
-# The project key is derived from the CWD: /home/agent → -home-agent
-# Write to the correct path so --resume can find it.
-cwd = "/home/agent"
+# The project key is derived from the CWD (e.g. /home/agent → -home-agent).
+# Fetch CWD from session metadata in Redis; fall back to /home/agent if missing.
+cwd = data.get("cwd") or "/home/agent"
 project_key = cwd.replace("/", "-")
 project_dir = os.path.join(CLAUDE_HOME, ".claude", "projects", project_key)
 os.makedirs(project_dir, exist_ok=True)

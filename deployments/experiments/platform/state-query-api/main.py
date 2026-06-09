@@ -172,11 +172,14 @@ async def store_transcript(session_id: str, request: Request):
     payload = await request.json()
     agent_name = payload.get("agent_name", "unknown")
     jsonl_content = payload.get("jsonl", "")
+    cwd = payload.get("cwd", "")
     if not jsonl_content:
         return {"status": "ignored", "reason": "no jsonl content"}
 
     r.set(f"session:{session_id}:transcript", jsonl_content)
     r.hset(f"session:{session_id}", "has_transcript", "true")
+    if cwd:
+        r.hset(f"session:{session_id}", "cwd", cwd)
     r.set(f"agent:{agent_name}:transcript_session", session_id)
 
     return {"status": "ok", "session_id": session_id, "size_bytes": len(jsonl_content)}
@@ -203,7 +206,10 @@ def get_agent_transcript(agent_name: str):
     if not jsonl_content:
         return {"agent_name": agent_name, "session_id": session_id, "status": "missing"}
 
-    return {"agent_name": agent_name, "session_id": session_id, "jsonl": jsonl_content, "size_bytes": len(jsonl_content)}
+    session_meta = r.hgetall(f"session:{session_id}")
+    cwd = session_meta.get("cwd", "")
+
+    return {"agent_name": agent_name, "session_id": session_id, "jsonl": jsonl_content, "size_bytes": len(jsonl_content), "cwd": cwd}
 
 
 @app.get("/health")
