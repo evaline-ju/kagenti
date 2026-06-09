@@ -208,7 +208,7 @@ Approximate resume used isolated `claude -p` calls (each a new session) and inje
 
 ---
 
-## Appendix A: Architecture Diagrams
+## Appendix A: Request Flows
 
 ### JSONL Backup/Restore (Claude Code)
 
