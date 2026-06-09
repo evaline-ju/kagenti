@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: claude-code-config
+  namespace: claude-code
+data:
+  settings.json: |
+    {
+      "hooks": {
+        "Stop": [
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "/hooks/stop-hook-stdout.sh"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  stop-hook-stdout.sh: |
+    #!/bin/bash
+    INPUT=$(cat)
+    LOG=/claude-home/stop-hook.log
+
+    # Always log locally for debugging
+    echo "[stop-hook] fired at $(date)" >> "$LOG"
+    echo "[stop-hook] payload: $INPUT" >> "$LOG"
+
+    # POST to state-query-api in-cluster
+    RESPONSE=$(echo "$INPUT" | curl -s -X POST \
+      -H "Content-Type: application/json" \
+      -d @- \
+      http://state-query-api.platform.svc.cluster.local:8000/hook/stop 2>&1)
+    echo "[stop-hook] api response: $RESPONSE" >> "$LOG"
+
+    exit 0

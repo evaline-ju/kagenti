@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: state-query-api
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: state-query-api
+    app.kubernetes.io/component: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: state-query-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: state-query-api
+    spec:
+      containers:
+      - name: api
+        image: state-query-api:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8000
+        env:
+        - name: REDIS_HOST
+          value: "redis.platform.svc.cluster.local"
+        - name: REDIS_PORT
+          value: "6379"
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: state-query-api
+  namespace: platform
+spec:
+  selector:
+    app.kubernetes.io/name: state-query-api
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000

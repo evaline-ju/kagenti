@@ -1,0 +1,98 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: claude-code
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: claude-code-home
+  namespace: claude-code
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: claude-code-agent
+  namespace: claude-code
+  labels:
+    app.kubernetes.io/name: claude-code-agent
+spec:
+  restartPolicy: Never
+  initContainers:
+  # Copy settings.json and hook script into the PVC before Claude Code starts.
+  # Claude Code reads settings from ~/.claude/settings.json at startup.
+  - name: init-config
+    image: python:3.11-slim
+    command: ["sh", "-c"]
+    args:
+    - |
+      set -e
+      mkdir -p /claude-home/.claude /hooks
+      cp /config/settings.json /claude-home/.claude/settings.json
+      cp /config/stop-hook-stdout.sh /hooks/stop-hook-stdout.sh
+      chmod +x /hooks/stop-hook-stdout.sh
+      python3 /config/restore-transcript.py || true
+      chown -R 1001:1001 /claude-home/.claude
+      echo "Config initialized"
+    env:
+    - name: STATE_API
+      value: "http://state-query-api.platform.svc.cluster.local:8000"
+    - name: CLAUDE_HOME
+      value: "/claude-home"
+    volumeMounts:
+    - name: claude-home
+      mountPath: /claude-home
+    - name: hooks
+      mountPath: /hooks
+    - name: config
+      mountPath: /config
+  containers:
+  - name: claude-code
+    image: claude-code-agent:latest
+    imagePullPolicy: IfNotPresent
+    stdin: true
+    tty: true
+    env:
+    - name: HOME
+      value: /claude-home
+    - name: ANTHROPIC_BASE_URL
+      valueFrom:
+        secretKeyRef:
+          name: claude-code-secret
+          key: litellm-base-url
+    - name: ANTHROPIC_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: claude-code-secret
+          key: litellm-api-key
+    - name: POD_NAMESPACE
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.namespace
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 512Mi
+    volumeMounts:
+    - name: claude-home
+      mountPath: /claude-home
+    - name: hooks
+      mountPath: /hooks
+  volumes:
+  - name: claude-home
+    persistentVolumeClaim:
+      claimName: claude-code-home
+  - name: hooks
+    emptyDir: {}
+  - name: config
+    configMap:
+      name: claude-code-config

@@ -1,0 +1,149 @@
+# Hermes deployment for Kind cluster — unified hook experiment.
+# Differences from hermes-deployment-vm.yaml:
+#   - imagePullPolicy: Never (pre-loaded into Kind)
+#   - Init container patches config.yaml to register the state-api hook
+#   - Hook POSTs to state-query-api (same endpoint as Claude Code)
+#   - HERMES_ACCEPT_HOOKS=1 for non-interactive mode
+#   - Real LiteLLM endpoint from secret
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hermes-agent
+  namespace: hermes
+  labels:
+    app.kubernetes.io/name: hermes-agent
+    app.kubernetes.io/component: agent
+  annotations:
+    description: "Hermes agent — unified hook experiment (LiteLLM + state-query-api)"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hermes-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: hermes-agent
+    spec:
+      initContainers:
+      - name: config-init
+        image: hermes-agent:local
+        imagePullPolicy: Never
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          HERMES_HOME=/opt/data
+          INSTALL_DIR=/opt/hermes
+          mkdir -p "$HERMES_HOME"/{cron,sessions,logs,hooks,memories,skills,skins,plans,workspace,home}
+
+          # Bootstrap config if not present
+          [ ! -f "$HERMES_HOME/.env" ] && cp "$INSTALL_DIR/.env.example" "$HERMES_HOME/.env"
+          [ ! -f "$HERMES_HOME/config.yaml" ] && cp "$INSTALL_DIR/cli-config.yaml.example" "$HERMES_HOME/config.yaml"
+          [ ! -f "$HERMES_HOME/SOUL.md" ] && cp "$INSTALL_DIR/docker/SOUL.md" "$HERMES_HOME/SOUL.md"
+
+          # Patch config for LiteLLM proxy
+          CONFIG="$HERMES_HOME/config.yaml"
+          sed -i 's|provider: "auto"|provider: "custom"|' "$CONFIG"
+          sed -i 's|default: "anthropic/claude-opus-4.6"|default: "'"$HERMES_MODEL"'"|' "$CONFIG"
+          sed -i 's|base_url: "https://openrouter.ai/api/v1"|base_url: "'"$LITELLM_BASE_URL"'"|' "$CONFIG"
+
+          # Register hooks in config.yaml (post_llm_call for turn persistence only)
+          # Recovery is caller-side — no pre_llm_call hook needed
+          sed -i '/^hooks:/,/^hooks_auto_accept/d' "$CONFIG"
+          printf '\nhooks:\n  post_llm_call:\n    - command: "/opt/data/hooks/session-to-state-api.py"\n      timeout: 10\nhooks_auto_accept: true\n' >> "$CONFIG"
+
+          # Copy hook scripts
+          cp /hook-scripts/session-to-state-api.py "$HERMES_HOME/hooks/session-to-state-api.py"
+          cp /hook-scripts/recovery-inject.py "$HERMES_HOME/hooks/recovery-inject.py"
+          chmod +x "$HERMES_HOME/hooks/session-to-state-api.py"
+          chmod +x "$HERMES_HOME/hooks/recovery-inject.py"
+
+          echo "Config init complete (post_llm_call hook registered)"
+        env:
+        - name: HERMES_MODEL
+          value: "claude-sonnet-4-6"
+        - name: LITELLM_BASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: hermes-secrets
+              key: LITELLM_BASE_URL
+        volumeMounts:
+        - name: hermes-data
+          mountPath: /opt/data
+        - name: hook-scripts
+          mountPath: /hook-scripts
+      containers:
+      - name: hermes
+        image: hermes-agent:local
+        imagePullPolicy: Never
+        args: ["gateway", "run"]
+        ports:
+        - name: gateway
+          containerPort: 8642
+          protocol: TCP
+        - name: webhook
+          containerPort: 8644
+          protocol: TCP
+        env:
+        - name: HERMES_HOME
+          value: /opt/data
+        - name: HERMES_INFERENCE_PROVIDER
+          value: "custom"
+        - name: HERMES_MODEL
+          value: "claude-sonnet-4-6"
+        - name: HERMES_ACCEPT_HOOKS
+          value: "1"
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: hermes-secrets
+              key: LITELLM_API_KEY
+        - name: OPENAI_API_BASE
+          valueFrom:
+            secretKeyRef:
+              name: hermes-secrets
+              key: LITELLM_BASE_URL
+        - name: API_SERVER_HOST
+          value: "0.0.0.0"
+        - name: API_SERVER_KEY
+          valueFrom:
+            secretKeyRef:
+              name: hermes-secrets
+              key: API_SERVER_KEY
+        - name: GATEWAY_ALLOW_ALL_USERS
+          value: "true"
+        readinessProbe:
+          tcpSocket:
+            port: 8642
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          failureThreshold: 6
+        livenessProbe:
+          tcpSocket:
+            port: 8642
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: "1"
+            memory: 2Gi
+        volumeMounts:
+        - name: hermes-data
+          mountPath: /opt/data
+      volumes:
+      - name: hermes-data
+        persistentVolumeClaim:
+          claimName: hermes-data
+      - name: hook-scripts
+        configMap:
+          name: hermes-hook-scripts
+          defaultMode: 0755
