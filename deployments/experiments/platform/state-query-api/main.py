@@ -212,6 +212,26 @@ def get_agent_transcript(agent_name: str):
     return {"agent_name": agent_name, "session_id": session_id, "jsonl": jsonl_content, "size_bytes": len(jsonl_content), "cwd": cwd}
 
 
+@app.post("/agents/{agent_name}/sqlite-backup")
+async def store_sqlite(agent_name: str, request: Request):
+    """Store a base64-encoded SQLite database backup for an agent."""
+    payload = await request.json()
+    db_b64 = payload.get("db", "")
+    if not db_b64:
+        return {"status": "ignored", "reason": "no db content"}
+    r.set(f"agent:{agent_name}:sqlite_backup", db_b64)
+    return {"status": "ok", "agent_name": agent_name, "size_bytes": len(db_b64)}
+
+
+@app.get("/agents/{agent_name}/sqlite-backup")
+def get_sqlite(agent_name: str):
+    """Retrieve the SQLite database backup for an agent."""
+    db_b64 = r.get(f"agent:{agent_name}:sqlite_backup")
+    if not db_b64:
+        return {"status": "not_found", "agent_name": agent_name}
+    return {"status": "ok", "agent_name": agent_name, "db": db_b64, "size_bytes": len(db_b64)}
+
+
 @app.get("/health")
 def health():
     try:

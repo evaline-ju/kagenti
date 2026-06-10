@@ -125,19 +125,54 @@ Inspect with: `kubectl exec -n platform deploy/redis -- redis-cli <command>`
 - `cache_read_input_tokens: 39752` confirms full prior context was read from the restored transcript
 - **Verdict: ✅ True resume.** A persistent session was interrupted by PVC loss and restored from Redis. `--resume` loaded the JSONL as native session history — structurally indistinguishable from a session that was never interrupted.
 
+### Hermes CLI Mode — True Resume via SQLite Backup/Restore
+
+**Date**: 2026-06-09
+**Mode**: CLI (`hermes chat -q` / `hermes chat --resume`) — NOT gateway mode
+
+Unlike gateway mode (where the gateway holds no inter-call state), Hermes CLI mode creates persistent sessions in SQLite. The `--resume SESSION_ID` flag reads session history from `state.db` and continues the conversation. This means SQLite backup/restore achieves true resume — the same pattern as Claude Code's JSONL backup/restore.
+
+**Method**: Deploy `hermes-cli` (Deployment with `sleep infinity`, driven via `kubectl exec`). Establish multi-turn session. Backup `state.db` to Redis (base64-encoded). Kill pod + delete PVC. Recreate PVC — init container restores `state.db` from Redis. Resume session.
+
+**Results**:
+- Established session `20260609_215740_1fc32c` with codename "ZEPHYR-9"
+- Verified resume works pre-PVC-loss: message count increases across `--resume` calls (4 → 8 → 10 → 12 messages)
+- Backed up `state.db` (118,784 bytes) to Redis
+- Deleted PVC → recreated fresh → scaled up → init container restored state.db from Redis
+- Init container log: `SQLite restore: restored state.db (118784 bytes) to /opt/data/state.db`
+- `hermes chat --resume 20260609_215740_1fc32c -q "What is our project codename?"` → **"ZEPHYR-9"**
+- Session ID identical, message count continuous (resumed from 12 total messages)
+
+**Verdict: ✅ True resume.** A persistent CLI session was interrupted by PVC loss and restored from Redis. `--resume` loaded session history from the restored SQLite — structurally indistinguishable from a session that was never interrupted.
+
+### Gateway vs CLI Mode
+
+| Aspect | Gateway mode | CLI mode |
+|--------|-------------|----------|
+| Session persistence | SQLite written but never read back for continuity | SQLite IS the session store |
+| Resume mechanism | Caller provides full message array each call | `--resume SESSION_ID` reads from SQLite |
+| After PVC loss + restore | New session (stateless replay) | Same session continues (true resume) |
+| External API | HTTP `/v1/chat/completions` | `kubectl exec` + `hermes chat -q` |
+| Composability | curl, load balancer, A2A protocol | Requires exec/TTY access to pod |
+| Typical use case | Production long-running agents, multi-agent orchestration | Local development, single-user interactive sessions |
+
+**Key insight**: The recovery mechanism depends on the deployment model, not the agent itself. The same Hermes binary achieves stateless replay (gateway) or true resume (CLI) depending on how it's deployed and driven.
+
+**Production tradeoff**: Gateway mode is the realistic deployment for long-running agents — it exposes an HTTP API (composable, load-balanceable, observable, integrates with A2A protocol) and supports concurrent callers. CLI mode requires exec access and a single interactive session per pod. True resume via CLI proves the mechanism works at the SQLite layer, but production recovery for Hermes means solving it at the gateway layer — either via a session-aware proxy that maintains the message array externally, or by adding server-side session state to the gateway itself.
+
 ### Summary Table
 
-| Capability | Hermes | Claude Code |
-|-----------|--------|-------------|
-| Turn persistence to Redis | ✅ post_llm_call hook | ✅ Caller-side wrapper |
-| Recovery from Redis after PVC loss | ✅ Stateless replay | ✅ True resume (JSONL backup + --resume) |
-| Agent code changes required | None | None |
-| Recovery is one-shot (no re-inject) | ✅ mark-recovered endpoint | ✅ Same session ID persists |
-| Context-dependent follow-up works | ✅ | ✅ |
-| Mid-turn recovery | ❌ | ❌ |
-| Tool call history recovery | N/A (gateway stateless) | ✅ Preserved in JSONL |
-| Reasoning trace recovery | N/A | ✅ Preserved in JSONL |
-| Session ID continuity | ✅ Same session ID | ✅ Fixed UUID via --session-id |
+| Capability | Hermes (gateway) | Hermes (CLI) | Claude Code |
+|-----------|--------|--------|-------------|
+| Turn persistence to Redis | ✅ post_llm_call hook | N/A (SQLite is local) | ✅ Caller-side wrapper |
+| Recovery from Redis after PVC loss | ✅ Stateless replay | ✅ True resume (SQLite backup + --resume) | ✅ True resume (JSONL backup + --resume) |
+| Agent code changes required | None | None | None |
+| Recovery is one-shot (no re-inject) | ✅ mark-recovered endpoint | ✅ Same session ID persists in SQLite | ✅ Same session ID persists |
+| Context-dependent follow-up works | ✅ | ✅ | ✅ |
+| Mid-turn recovery | ❌ | ❌ | ❌ |
+| Tool call history recovery | N/A (gateway stateless) | ✅ Preserved in SQLite | ✅ Preserved in JSONL |
+| Reasoning trace recovery | N/A | ✅ Preserved in SQLite | ✅ Preserved in JSONL |
+| Session ID continuity | ✅ Same session ID | ✅ Same session ID | ✅ Fixed UUID via --session-id |
 
 ### Why One-Shot Recovery Guards
 
@@ -152,8 +187,9 @@ Inspect with: `kubectl exec -n platform deploy/redis -- redis-cli <command>`
 
 **H1 confirmed**: Both agents recover from PVC loss using only external infrastructure (hooks, wrappers, init containers). Zero agent source code changes.
 
-**H2 confirmed**: Both recover conversation continuity, via mechanism-appropriate paths:
-- Hermes: **stateless replay** — the gateway holds no inter-call state. The message array IS the session, so replaying it from Redis is operationally identical to normal use. There is no persistent session to "resume" — recovery means reconstructing the caller's context.
+**H2 confirmed**: All three modes recover conversation continuity, via mechanism-appropriate paths:
+- Hermes (gateway): **stateless replay** — the gateway holds no inter-call state. The message array IS the session, so replaying it from Redis is operationally identical to normal use.
+- Hermes (CLI): **true resume** — `--resume` reads session history from restored SQLite. Structurally identical to an uninterrupted session.
 - Claude Code: **true resume** — `--resume` restores the full JSONL transcript (tool calls, reasoning, system prompt). The LLM treats it as a direct continuation of an interrupted persistent session.
 
 **H3 confirmed**: Recovery is mechanically verifiable by inspecting data structures at the API layer — no reliance on the agent's self-report.
@@ -178,7 +214,8 @@ JSONL: 11 lines restored → 21 lines after new turn appended natively
 
 | Agent | Key insight |
 |-------|-------------|
-| Hermes | Gateway holds no session state between calls. The message array IS the session. Replaying it from Redis is equivalent to never having failed. |
+| Hermes (gateway) | Gateway holds no session state between calls. The message array IS the session. Replaying it from Redis is equivalent to never having failed. |
+| Hermes (CLI) | CLI mode persists sessions in SQLite. `--resume` reads from SQLite, so backing up + restoring `state.db` before pod start makes `--resume` work natively after PVC loss. Same pattern as Claude Code. |
 | Claude Code | `--session-id` + `--resume` creates a persistent JSONL session. Backing up + restoring that JSONL before pod start makes `--resume` work natively after PVC loss. |
 
 ### What Changed from Approximate to True Resume (Claude Code)
@@ -199,7 +236,7 @@ Approximate resume used isolated `claude -p` calls (each a new session) and inje
 4. **Hermes memories/skills lost** — only conversation turns are in Redis; PVC-resident agent state (memories, learned skills) is gone after PVC loss.
 5. **Backup race condition** — if the pod dies before the post-turn backup completes, the latest turn is lost from Redis (though it may still be in JSONL if PVC survives).
 6. **Single session recovery only** — the recovery-context endpoint picks the most recent session. Multiple concurrent sessions per agent are not handled.
-7. **Hermes: stateless replay, not true resume — SQLite restore doesn't help** — the gateway holds no inter-call state. Each `/v1/chat/completions` call is independent; the gateway writes to SQLite but never reads back from it for session continuity. Backing up and restoring `state.db` would preserve historical records but the gateway would still not use them to "resume" — the next call still requires the caller to provide the full message array. True resume requires either (a) using Hermes in interactive/CLI mode (not gateway mode), where SQLite backup/restore would work, or (b) a session-aware proxy that maintains the message array externally. We chose gateway mode because it exposes an HTTP API (curl-testable, composable, load-balanceable); interactive mode requires a TTY and can't be driven programmatically from outside the pod.
+7. **Hermes gateway: stateless replay only — SQLite restore doesn't help gateway mode** — the gateway holds no inter-call state. Each `/v1/chat/completions` call is independent; the gateway writes to SQLite but never reads back from it for session continuity. However, **Hermes CLI mode achieves true resume** via SQLite backup/restore (verified 2026-06-09). The recovery mechanism depends on the deployment model: gateway exposes an HTTP API (curl-testable, composable, load-balanceable) but cannot resume; CLI requires exec access but supports `--resume` natively from SQLite.
 8. **state-query-api is Redis-specific** — all storage operations (turns, transcripts, indexes, markers) use Redis data structures directly with no abstraction layer. A natural generalization would split by data shape:
    - **Turns + indexes + markers** → keep in Redis (small, frequently accessed, query-by-session)
    - **Transcripts** (JSONL blobs, 8-50KB+, write-once/read-once) → move to object storage (S3/MinIO)
@@ -225,13 +262,24 @@ Pod restart → Init container runs → GET /agents/claude-code/transcript
   → --resume finds it → True resume
 ```
 
-### Caller-Side Recovery (Hermes)
+### Caller-Side Recovery (Hermes Gateway)
 
 ```
 Pod restart → Caller invokes recovery-inject.py
   → GET /agents/hermes/recovery-context (message array from Redis)
   → Prepends to new user message → POST /v1/chat/completions
   → POST /agents/hermes/mark-recovered (one-shot)
+```
+
+### SQLite Backup/Restore (Hermes CLI)
+
+```
+Turn N completes → state.db updated on disk (native Hermes behavior)
+  → Backup: base64-encode state.db → POST /agents/hermes-cli/sqlite-backup (stored in Redis)
+
+Pod restart → Init container runs → GET /agents/hermes-cli/sqlite-backup
+  → Decodes base64 → Writes state.db to /opt/data/
+  → hermes chat --resume SESSION_ID → True resume
 ```
 
 ---
@@ -257,6 +305,13 @@ All paths relative to `deployments/experiments/`.
 | `claude-code/claude-code-configmap.yaml` | ConfigMap: settings.json + stop-hook-stdout.sh + restore-transcript.py |
 | `claude-code/claude-code-secret.example.yaml` | Secret template (LiteLLM credentials — required for pod to start) |
 | `claude-code/hooks/restore-transcript.py` | Init container script — fetches JSONL from Redis, writes to disk |
+
+### Hermes CLI mode experiment (true resume)
+
+| File | Purpose |
+|------|---------|
+| `hermes/hermes-deployment-cli.yaml` | CLI mode Deployment (sleep infinity + restore init container) |
+| `hermes/hooks/restore-sqlite.py` | Init container script — fetches SQLite from Redis, writes to disk |
 
 ### Optional / not used in demo
 
