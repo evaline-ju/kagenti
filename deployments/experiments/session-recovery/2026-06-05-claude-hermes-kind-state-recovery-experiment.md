@@ -164,7 +164,7 @@ Unlike gateway mode (where the gateway holds no inter-call state), Hermes CLI mo
 
 | Capability | Hermes (gateway) | Hermes (CLI) | Claude Code |
 |-----------|--------|--------|-------------|
-| Turn persistence to Redis | ✅ post_llm_call hook | N/A (SQLite is local) | ✅ Caller-side wrapper |
+| Turn persistence | ✅ post_llm_call hook | N/A (SQLite is local) | ✅ Caller-side wrapper |
 | Recovery from Redis after PVC loss | ✅ Stateless replay | ✅ True resume (SQLite backup + --resume) | ✅ True resume (JSONL backup + --resume) |
 | Agent code changes required | None | None | None |
 | Recovery is one-shot (no re-inject) | ✅ mark-recovered endpoint | ✅ Same session ID persists in SQLite | ✅ Same session ID persists |

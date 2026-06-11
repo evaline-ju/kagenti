@@ -8,7 +8,9 @@
 
 ### Step 1: Establish conversation (2 turns)
 
-Use a unique detail (project codename "ZEPHYR-9") that the model can't hallucinate:
+Use a unique detail (project codename "ZEPHYR-9") that the model can't hallucinate.
+
+**Important**: Don't say "remember" — that triggers Claude Code's memory system which writes to disk files that won't survive PVC loss. The codename must only live in the conversation transcript (which is what we back up to Redis).
 
 ```bash
 kubectl port-forward -n platform svc/state-query-api 8000:8000 &
@@ -16,7 +18,7 @@ kubectl port-forward -n platform svc/state-query-api 8000:8000 &
 SESSION_ID=$(python3 -c "import uuid; print(uuid.uuid4())")
 
 kubectl exec -n claude-code claude-code-agent -- claude -p \
-  "Our project codename is ZEPHYR-9. Remember that codename. Now, we need persistent storage for it on Kubernetes. What is a PersistentVolume? One sentence." \
+  "Our project codename is ZEPHYR-9. We need persistent storage for it on Kubernetes. What is a PersistentVolume? One sentence." \
   --session-id "$SESSION_ID" --output-format json | jq -r '.result'
 
 kubectl exec -n claude-code claude-code-agent -- claude -p \
