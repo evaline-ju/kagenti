@@ -1,3 +1,5 @@
+**DEPRECATED; the version in [docs/Users Guides](docs/users-guides/PERSONAS_AND_ROLES.md) will replace this file**
+
 # Rossoctl Project Personas and Roles Documentation
 
 This document outlines the core personas that the Rossoctl platform serves across its repository ecosystem.
@@ -290,7 +292,7 @@ Rossoctl is a cloud-native middleware platform that provides framework-neutral, 
 ### 2.3 Security and Identity Specialist
 
 **Description**: Administrators responsible for implementing and maintaining the zero-trust security model and identity management.
-Review Identity Patterns in [identity documentation](docs/identity-guide.md) for more information.
+Review Identity Patterns in [identity documentation](docs/concepts/identity-guide.md) for more information.
 
 **Key Responsibilities**:
 

@@ -1,4 +1,9 @@
-# Using Local Models with Rossoctl
+---
+description: Install Ollama for testing with local LLMs.
+sidebar_label: Run with Ollama
+---
+
+# Using Local Models
 
 Rossoctl supports any OpenAI-compatible model backend. This guide covers using [Ollama](https://ollama.com/) to run LLM models locally, eliminating the need for an external API key.
 
@@ -194,6 +199,7 @@ The following models have been tested with Rossoctl agents:
 | `llama3.2:3b-instruct-fp16` | 3B | Kind, Apple Silicon | Default in `ollama` environment set |
 | `granite3.3:8b` | 8B | Kind, Apple M3 (64 GB) | Tested with Slack Research Agent |
 | `ibm/granite4:latest` | varies | Kind | Tested with GitHub Issue Agent |
+| `gpt-oss:latest` | 20B | Kind, Apple M3 (64 GB) | Tested on GitHub Issue Agent and Simple Generalist |
 
 ### OpenAI Models
 
