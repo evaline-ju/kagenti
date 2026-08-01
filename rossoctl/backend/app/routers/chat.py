@@ -29,6 +29,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 # A2A protocol constants
 A2A_AGENT_CARD_PATH = "/.well-known/agent-card.json"
+A2A_LEGACY_AGENT_CARD_PATH = "/.well-known/agent.json"
 
 # RFC 1123 label: lowercase alphanumeric, may contain hyphens, 1-63 chars.
 _K8S_NAME_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
@@ -47,6 +48,15 @@ _SAFE_QUERY_CHARS = frozenset(
 # Eliminates redundant agent-card HTTP fetches during a conversation (SC-5).
 _invoke_url_cache: dict[tuple[str, str], tuple[str, float]] = {}
 _CACHE_TTL_SECONDS = 30.0
+
+
+async def _fetch_agent_card(client: httpx.AsyncClient, base_url: str) -> httpx.Response:
+    """Fetch an agent card, falling back to the deprecated endpoint on 404."""
+    response = await client.get(f"{base_url}{A2A_AGENT_CARD_PATH}")
+    if response.status_code == 404:
+        response = await client.get(f"{base_url}{A2A_LEGACY_AGENT_CARD_PATH}")
+    response.raise_for_status()
+    return response
 
 
 async def _resolve_invoke_url(name: str, namespace: str, kube: KubernetesService) -> str:
@@ -90,8 +100,7 @@ async def _resolve_invoke_url(name: str, namespace: str, kube: KubernetesService
     base_url = resolve_agent_url(safe_name, safe_ns, kube)
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(f"{base_url}{A2A_AGENT_CARD_PATH}")
-            resp.raise_for_status()
+            resp = await _fetch_agent_card(client, base_url)
             card_url = resp.json().get("url")
             if card_url:
                 parsed = urlparse(card_url)
@@ -168,12 +177,10 @@ async def get_agent_card(
     All agents are reached via their cluster-internal URL through AuthBridge.
     """
     agent_url = resolve_agent_url(name, namespace, kube)
-    card_url = f"{agent_url}{A2A_AGENT_CARD_PATH}"
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(card_url)
-            response.raise_for_status()
+            response = await _fetch_agent_card(client, agent_url)
             card_data = response.json()
 
             # Parse capabilities
