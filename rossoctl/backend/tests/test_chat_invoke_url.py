@@ -128,8 +128,8 @@ class TestResolveInvokeUrl:
 
         assert url == "http://myagent.ns.svc.cluster.local:8443/a2a/invoke"
         assert [call.args[0] for call in mock_get.await_args_list] == [
-            "http://myagent.ns.svc.cluster.local:8443/.well-known/agent-card.json",
-            "http://myagent.ns.svc.cluster.local:8443/.well-known/agent.json",
+            "/.well-known/agent-card.json",
+            "/.well-known/agent.json",
         ]
 
     @pytest.mark.asyncio
@@ -256,9 +256,17 @@ class TestGetAgentCard:
 
         assert card.name == "legacy-agent"
         assert [call.args[0] for call in mock_get.await_args_list] == [
-            "http://myagent.ns.svc.cluster.local:8443/.well-known/agent-card.json",
-            "http://myagent.ns.svc.cluster.local:8443/.well-known/agent.json",
+            "/.well-known/agent-card.json",
+            "/.well-known/agent.json",
         ]
+
+    @pytest.mark.asyncio
+    async def test_rejects_invalid_agent_identity(self, mock_kube, mock_resolve_base):
+        """Reject invalid path parameters before constructing the agent URL."""
+        with pytest.raises(Exception, match="Invalid agent name or namespace"):
+            await get_agent_card("ns", "invalid/name", mock_kube)
+
+        mock_resolve_base.assert_not_called()
 
 
 class TestInvokeUrlCache:
