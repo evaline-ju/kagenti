@@ -460,3 +460,69 @@ class TestToolBuildInfoResponse:
         assert response.toolConfig is not None
         assert response.toolConfig.protocol == "streamable_http"
         assert response.toolConfig.createHttpRoute is True
+
+
+class TestToolResourceOverrideRoundTrip:
+    """A tool built from source must end up with the resources chosen at
+    form-submit time. That requires the overrides to survive the whole
+    store-then-read-back path: CreateToolRequest -> Build annotation ->
+    ResourceConfigFromBuild -> finalize. A break anywhere in that chain
+    silently downgrades the workload to the platform defaults."""
+
+    def test_build_manifest_stores_resource_overrides(self):
+        request = CreateToolRequest(
+            name="gpu-tool",
+            namespace="team1",
+            protocol="streamable_http",
+            framework="Python",
+            deploymentMethod="source",
+            gitUrl="https://github.com/example/tools",
+            contextDir="tools/gpu",
+            k8sResourceLimits={"cpu": "2", "memory": "4Gi"},
+            k8sResourceRequests={"cpu": "500m", "memory": "1Gi"},
+        )
+
+        manifest = _build_tool_shipwright_build_manifest(request)
+
+        tool_config = json.loads(manifest["metadata"]["annotations"]["rossoctl.io/tool-config"])
+        assert tool_config["k8sResourceLimits"] == {"cpu": "2", "memory": "4Gi"}
+        assert tool_config["k8sResourceRequests"] == {"cpu": "500m", "memory": "1Gi"}
+
+        # Absent overrides are omitted rather than stored as null, so the
+        # finalize read-back falls through to the platform defaults.
+        without_overrides = _build_tool_shipwright_build_manifest(
+            request.model_copy(update={"k8sResourceLimits": None, "k8sResourceRequests": None})
+        )
+        bare_config = json.loads(
+            without_overrides["metadata"]["annotations"]["rossoctl.io/tool-config"]
+        )
+        assert "k8sResourceLimits" not in bare_config
+        assert "k8sResourceRequests" not in bare_config
+
+    def test_extracted_config_preserves_resource_overrides(self):
+        """ResourceConfigFromBuild drops annotation keys it does not declare, so
+        this guards against the fields being silently discarded on read-back."""
+        build = {
+            "metadata": {
+                "name": "gpu-tool",
+                "namespace": "team1",
+                "annotations": {
+                    "rossoctl.io/tool-config": json.dumps(
+                        {
+                            "protocol": "streamable_http",
+                            "framework": "Python",
+                            "k8sResourceLimits": {"cpu": "2", "memory": "4Gi"},
+                            "k8sResourceRequests": {"cpu": "500m", "memory": "1Gi"},
+                        }
+                    )
+                },
+            }
+        }
+
+        config = extract_resource_config_from_build(build, ResourceType.TOOL)
+
+        assert config is not None
+        assert config.k8sResourceLimits == {"cpu": "2", "memory": "4Gi"}
+        assert config.k8sResourceRequests == {"cpu": "500m", "memory": "1Gi"}
+        # The finalize path reads this via model_dump(); confirm it survives too.
+        assert config.model_dump()["k8sResourceLimits"] == {"cpu": "2", "memory": "4Gi"}

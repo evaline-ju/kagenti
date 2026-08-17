@@ -322,6 +322,17 @@ class CreateAgentRequest(BaseModel):
     # Shipwright build configuration
     shipwrightConfig: Optional[ShipwrightBuildConfig] = None
 
+    # Optional per-agent overrides for container resource limits/requests
+    # (falls back to DEFAULT_RESOURCE_LIMITS / DEFAULT_RESOURCE_REQUESTS).
+    #
+    # Note: The keys and quantity strings are not validated. This is
+    # deliberate: validating them here would mean testing Kubernetes
+    # shapes (including extended resources such as nvidia.com/gpu),
+    # a complex validation path that would still have to be kept in sync
+    # with the API server.
+    k8sResourceLimits: Optional[Dict[str, str]] = None
+    k8sResourceRequests: Optional[Dict[str, str]] = None
+
     @field_validator("workloadType")
     @classmethod
     def validate_workload_type(cls, v: str) -> str:
@@ -2602,6 +2613,10 @@ def _build_agent_shipwright_build_manifest(
         resource_config["tlsBridgeEnabled"] = True
     if request.persistentStorage:
         resource_config["persistentStorage"] = request.persistentStorage.model_dump()
+    if request.k8sResourceLimits is not None:
+        resource_config["k8sResourceLimits"] = request.k8sResourceLimits
+    if request.k8sResourceRequests is not None:
+        resource_config["k8sResourceRequests"] = request.k8sResourceRequests
     # Add env vars if present
     if request.envVars:
         resource_config["envVars"] = [ev.model_dump(exclude_none=True) for ev in request.envVars]
@@ -3001,6 +3016,24 @@ def _build_common_annotations(request: "CreateAgentRequest") -> Dict[str, str]:
     return annotations
 
 
+def build_container_resources(
+    limits: Optional[Dict[str, str]] = None,
+    requests: Optional[Dict[str, str]] = None,
+) -> Dict[str, Dict[str, str]]:
+    """Build a container "resources" block from optional per-workload overrides.
+
+    None means "not specified" and selects the platform default. An empty dict is
+    honored as-is, because {} is how Kubernetes spells "no limits" -- it yields an
+    unbounded container rather than one capped at DEFAULT_RESOURCE_LIMITS. Testing
+    truthiness instead (`limits or DEFAULT_RESOURCE_LIMITS`) would collapse those
+    two cases and silently cap a workload the caller asked to leave uncapped.
+    """
+    return {
+        "limits": DEFAULT_RESOURCE_LIMITS if limits is None else limits,
+        "requests": DEFAULT_RESOURCE_REQUESTS if requests is None else requests,
+    }
+
+
 def _build_selector_labels(request: "CreateAgentRequest") -> Dict[str, str]:
     """
     Build selector labels for matching pods to workloads and services.
@@ -3188,10 +3221,9 @@ def _build_deployment_manifest(
                             "name": "agent",
                             "image": image,
                             "imagePullPolicy": DEFAULT_IMAGE_POLICY,
-                            "resources": {
-                                "limits": DEFAULT_RESOURCE_LIMITS,
-                                "requests": DEFAULT_RESOURCE_REQUESTS,
-                            },
+                            "resources": build_container_resources(
+                                request.k8sResourceLimits, request.k8sResourceRequests
+                            ),
                             "env": env_vars,
                             "ports": [
                                 {
@@ -3391,10 +3423,9 @@ def _build_statefulset_manifest(
                             "name": "agent",
                             "image": image,
                             "imagePullPolicy": DEFAULT_IMAGE_POLICY,
-                            "resources": {
-                                "limits": DEFAULT_RESOURCE_LIMITS,
-                                "requests": DEFAULT_RESOURCE_REQUESTS,
-                            },
+                            "resources": build_container_resources(
+                                request.k8sResourceLimits, request.k8sResourceRequests
+                            ),
                             "env": env_vars,
                             "ports": [
                                 {
@@ -3535,10 +3566,9 @@ def _build_job_manifest(
                             "name": "agent",
                             "image": image,
                             "imagePullPolicy": DEFAULT_IMAGE_POLICY,
-                            "resources": {
-                                "limits": DEFAULT_RESOURCE_LIMITS,
-                                "requests": DEFAULT_RESOURCE_REQUESTS,
-                            },
+                            "resources": build_container_resources(
+                                request.k8sResourceLimits, request.k8sResourceRequests
+                            ),
                             "env": env_vars,
                             "ports": [
                                 {
@@ -3644,10 +3674,9 @@ def _build_sandbox_manifest(
                             "name": "agent",
                             "image": image,
                             "imagePullPolicy": DEFAULT_IMAGE_POLICY,
-                            "resources": {
-                                "limits": DEFAULT_RESOURCE_LIMITS,
-                                "requests": DEFAULT_RESOURCE_REQUESTS,
-                            },
+                            "resources": build_container_resources(
+                                request.k8sResourceLimits, request.k8sResourceRequests
+                            ),
                             "env": env_vars,
                             "ports": [
                                 {
@@ -4078,6 +4107,11 @@ class FinalizeShipwrightBuildRequest(BaseModel):
     mcpToolName: Optional[str] = None
     llmPreset: Optional[str] = None
     llmModel: Optional[str] = None
+    # Mirror CreateAgentRequest.k8sResourceLimits/k8sResourceRequests. None →
+    # inherit the value stashed on the BuildRun annotation at form-submit time,
+    # so a build-from-source agent gets the same resources as a direct-image one.
+    k8sResourceLimits: Optional[Dict[str, str]] = None
+    k8sResourceRequests: Optional[Dict[str, str]] = None
 
     @model_validator(mode="after")
     def _check_mtls_compatible_with_mode(self) -> "FinalizeShipwrightBuildRequest":
@@ -4408,6 +4442,21 @@ async def finalize_shipwright_build(
         if final_persistent_storage is None and stored_config.get("persistentStorage"):
             final_persistent_storage = PersistentStorageConfig(**stored_config["persistentStorage"])
 
+        # Per-workload resource overrides. Same store-then-read-back flow as
+        # mtlsMode: None on the finalize request → inherit whatever the form
+        # stashed on the BuildRun annotation, else fall back to the platform
+        # defaults inside the manifest builders.
+        final_k8s_resource_limits = (
+            request.k8sResourceLimits
+            if request.k8sResourceLimits is not None
+            else stored_config.get("k8sResourceLimits")
+        )
+        final_k8s_resource_requests = (
+            request.k8sResourceRequests
+            if request.k8sResourceRequests is not None
+            else stored_config.get("k8sResourceRequests")
+        )
+
         final_mcp_tool_name = (
             request.mcpToolName
             if request.mcpToolName is not None
@@ -4450,6 +4499,8 @@ async def finalize_shipwright_build(
             mcpToolName=final_mcp_tool_name,
             llmPreset=final_llm_preset,
             llmModel=final_llm_model,
+            k8sResourceLimits=final_k8s_resource_limits,
+            k8sResourceRequests=final_k8s_resource_requests,
         )
         agent_request = apply_agent_import_defaults(agent_request, kube)
 

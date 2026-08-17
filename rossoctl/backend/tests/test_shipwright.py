@@ -16,6 +16,7 @@ import pytest
 
 from app.routers.agents import (
     CreateAgentRequest,
+    FinalizeShipwrightBuildRequest,
     ShipwrightBuildConfig,
     EnvVar,
     ServicePort,
@@ -50,6 +51,8 @@ from app.core.constants import (
     ROSSOCTL_SPIRE_LABEL,
     ROSSOCTL_SPIRE_ENABLED_VALUE,
     RESOURCE_TYPE_AGENT,
+    DEFAULT_RESOURCE_LIMITS,
+    DEFAULT_RESOURCE_REQUESTS,
 )
 
 
@@ -1050,3 +1053,268 @@ class TestSpireLabel:
 
         pod_labels = manifest["spec"]["template"]["metadata"]["labels"]
         assert pod_labels.get(ROSSOCTL_SPIRE_LABEL) == ROSSOCTL_SPIRE_ENABLED_VALUE
+
+
+class TestResourceOverridePropagation:
+    """Verify k8sResourceLimits/k8sResourceRequests overrides reach the
+    generated container resources, and fall back to platform defaults
+    when not provided."""
+
+    # Every agent workload type emits its own container spec, so each builder is
+    # exercised independently -- a regression in one would otherwise hide behind
+    # the deployment-only coverage above. workloadType is left at its default:
+    # the builder under test determines the shape, and "sandbox" is not an
+    # accepted value on CreateAgentRequest.
+    _AGENT_BUILDERS = [
+        (_build_deployment_manifest, lambda m: m["spec"]["template"]["spec"]),
+        (_build_statefulset_manifest, lambda m: m["spec"]["template"]["spec"]),
+        (_build_job_manifest, lambda m: m["spec"]["template"]["spec"]),
+        (_build_sandbox_manifest, lambda m: m["spec"]["podTemplate"]["spec"]),
+    ]
+
+    @pytest.mark.parametrize(("builder", "pod_spec_getter"), _AGENT_BUILDERS)
+    def test_agent_workloads_use_custom_resources(self, builder, pod_spec_getter):
+        """Overrides reach the container spec for every agent workload type."""
+        request = CreateAgentRequest(
+            name="test-agent",
+            namespace="team1",
+            protocol="a2a",
+            framework="LangGraph",
+            deploymentMethod="image",
+            containerImage="registry.example.com/test-agent:v1",
+            k8sResourceLimits={"cpu": "1", "memory": "2Gi"},
+            k8sResourceRequests={"cpu": "250m", "memory": "512Mi"},
+        )
+        manifest = builder(request, image="registry.example.com/test-agent:v1")
+
+        resources = pod_spec_getter(manifest)["containers"][0]["resources"]
+        assert resources["limits"] == {"cpu": "1", "memory": "2Gi"}
+        assert resources["requests"] == {"cpu": "250m", "memory": "512Mi"}
+
+    @pytest.mark.parametrize(("builder", "pod_spec_getter"), _AGENT_BUILDERS)
+    def test_agent_workloads_fall_back_to_defaults(self, builder, pod_spec_getter):
+        """Omitting the overrides leaves the platform defaults untouched."""
+        request = CreateAgentRequest(
+            name="test-agent",
+            namespace="team1",
+            protocol="a2a",
+            framework="LangGraph",
+            deploymentMethod="image",
+            containerImage="registry.example.com/test-agent:v1",
+        )
+        manifest = builder(request, image="registry.example.com/test-agent:v1")
+
+        resources = pod_spec_getter(manifest)["containers"][0]["resources"]
+        assert resources["limits"] == DEFAULT_RESOURCE_LIMITS
+        assert resources["requests"] == DEFAULT_RESOURCE_REQUESTS
+
+    # Both tool builders emit their own container spec, so every resource case
+    # runs against each one. Covering only the statefulset would let a
+    # deployment-path regression through whenever the wrong values are still
+    # non-empty (a fallback- or {}-only check cannot see that).
+    _TOOL_BUILDERS = [_build_tool_deployment_manifest, _build_tool_statefulset_manifest]
+
+    @pytest.mark.parametrize("builder", _TOOL_BUILDERS)
+    def test_tool_workloads_use_custom_resources(self, builder):
+        """Overrides reach the container spec for both tool workload types."""
+        manifest = builder(
+            name="test-tool",
+            namespace="team1",
+            image="registry.example.com/test-tool:v1",
+            resource_limits={"cpu": "1", "memory": "2Gi"},
+            resource_requests={"cpu": "250m", "memory": "512Mi"},
+        )
+
+        resources = manifest["spec"]["template"]["spec"]["containers"][0]["resources"]
+        assert resources["limits"] == {"cpu": "1", "memory": "2Gi"}
+        assert resources["requests"] == {"cpu": "250m", "memory": "512Mi"}
+
+    @pytest.mark.parametrize("builder", _TOOL_BUILDERS)
+    def test_tool_workloads_fall_back_to_defaults(self, builder):
+        """Tool builders keep the platform defaults when no override is passed."""
+        manifest = builder(
+            name="test-tool",
+            namespace="team1",
+            image="registry.example.com/test-tool:v1",
+        )
+
+        resources = manifest["spec"]["template"]["spec"]["containers"][0]["resources"]
+        assert resources["limits"] == DEFAULT_RESOURCE_LIMITS
+        assert resources["requests"] == DEFAULT_RESOURCE_REQUESTS
+
+    def test_only_the_supplied_override_replaces_its_default(self):
+        """The two parameters are independent: overriding limits alone must not
+        disturb requests. This is the behavior that motivates two flat fields
+        rather than a single aggregating ResourceConfig."""
+        request = CreateAgentRequest(
+            name="test-agent",
+            namespace="team1",
+            protocol="a2a",
+            framework="LangGraph",
+            deploymentMethod="image",
+            containerImage="registry.example.com/test-agent:v1",
+            k8sResourceLimits={"cpu": "4", "memory": "8Gi"},
+        )
+        manifest = _build_deployment_manifest(request, image="registry.example.com/test-agent:v1")
+
+        resources = manifest["spec"]["template"]["spec"]["containers"][0]["resources"]
+        assert resources["limits"] == {"cpu": "4", "memory": "8Gi"}
+        assert resources["requests"] == DEFAULT_RESOURCE_REQUESTS
+
+    def test_arbitrary_resource_keys_pass_through(self):
+        """Extended resources (e.g. GPUs) are forwarded verbatim rather than
+        rejected, since quantity/name validation is deferred to the Kubernetes
+        API server instead of being reimplemented here."""
+        request = CreateAgentRequest(
+            name="test-agent",
+            namespace="team1",
+            protocol="a2a",
+            framework="LangGraph",
+            deploymentMethod="image",
+            containerImage="registry.example.com/test-agent:v1",
+            k8sResourceLimits={"nvidia.com/gpu": "1"},
+        )
+        manifest = _build_deployment_manifest(request, image="registry.example.com/test-agent:v1")
+
+        resources = manifest["spec"]["template"]["spec"]["containers"][0]["resources"]
+        assert resources["limits"] == {"nvidia.com/gpu": "1"}
+
+    @pytest.mark.parametrize(("builder", "pod_spec_getter"), _AGENT_BUILDERS)
+    def test_empty_dict_means_unbounded_not_default(self, builder, pod_spec_getter):
+        """{} is how Kubernetes spells "no limits", so it must be honored rather
+        than collapsed into the platform defaults. This is the case a truthiness
+        check (`limits or DEFAULT_RESOURCE_LIMITS`) would silently cap."""
+        request = CreateAgentRequest(
+            name="test-agent",
+            namespace="team1",
+            protocol="a2a",
+            framework="LangGraph",
+            deploymentMethod="image",
+            containerImage="registry.example.com/test-agent:v1",
+            k8sResourceLimits={},
+            k8sResourceRequests={},
+        )
+        manifest = builder(request, image="registry.example.com/test-agent:v1")
+
+        resources = pod_spec_getter(manifest)["containers"][0]["resources"]
+        assert resources["limits"] == {}
+        assert resources["requests"] == {}
+
+    def test_empty_dict_is_honored_per_field(self):
+        """Clearing only limits leaves requests on its default, so an unbounded
+        ceiling can be combined with a normal scheduling floor."""
+        request = CreateAgentRequest(
+            name="test-agent",
+            namespace="team1",
+            protocol="a2a",
+            framework="LangGraph",
+            deploymentMethod="image",
+            containerImage="registry.example.com/test-agent:v1",
+            k8sResourceLimits={},
+        )
+        manifest = _build_deployment_manifest(request, image="registry.example.com/test-agent:v1")
+
+        resources = manifest["spec"]["template"]["spec"]["containers"][0]["resources"]
+        assert resources["limits"] == {}
+        assert resources["requests"] == DEFAULT_RESOURCE_REQUESTS
+
+    @pytest.mark.parametrize("builder", _TOOL_BUILDERS)
+    def test_tool_empty_dict_means_unbounded(self, builder):
+        """Tool builders honor {} the same way the agent builders do."""
+        manifest = builder(
+            name="test-tool",
+            namespace="team1",
+            image="registry.example.com/test-tool:v1",
+            resource_limits={},
+            resource_requests={},
+        )
+
+        resources = manifest["spec"]["template"]["spec"]["containers"][0]["resources"]
+        assert resources["limits"] == {}
+        assert resources["requests"] == {}
+
+
+class TestAgentResourceOverrideRoundTrip:
+    """A build-from-source agent must get the resources chosen at form-submit
+    time. The finalize path reconstructs a CreateAgentRequest from the Build
+    annotation, so the overrides have to survive that store-then-read-back
+    trip or the workload silently falls back to the platform defaults."""
+
+    def test_build_manifest_stores_resource_overrides(self):
+        request = CreateAgentRequest(
+            name="gpu-agent",
+            namespace="team1",
+            protocol="a2a",
+            framework="LangGraph",
+            deploymentMethod="source",
+            gitUrl="https://github.com/example/repo",
+            gitPath="agents/gpu",
+            gitBranch="main",
+            imageTag="v0.0.1",
+            k8sResourceLimits={"cpu": "2", "memory": "4Gi"},
+            k8sResourceRequests={"cpu": "500m", "memory": "1Gi"},
+        )
+
+        manifest = _build_agent_shipwright_build_manifest(request)
+
+        stored_config = json.loads(manifest["metadata"]["annotations"]["rossoctl.io/agent-config"])
+        assert stored_config["k8sResourceLimits"] == {"cpu": "2", "memory": "4Gi"}
+        assert stored_config["k8sResourceRequests"] == {"cpu": "500m", "memory": "1Gi"}
+
+        # Absent overrides are omitted rather than stored as null, so the
+        # finalize read-back falls through to the platform defaults.
+        without_overrides = _build_agent_shipwright_build_manifest(
+            request.model_copy(update={"k8sResourceLimits": None, "k8sResourceRequests": None})
+        )
+        bare_config = json.loads(
+            without_overrides["metadata"]["annotations"]["rossoctl.io/agent-config"]
+        )
+        assert "k8sResourceLimits" not in bare_config
+        assert "k8sResourceRequests" not in bare_config
+
+    def test_stored_overrides_reach_the_container_spec(self):
+        """End-to-end on the finalize seam: the annotation written at build time
+        is what the finalize path reads back, so feeding it into the rebuilt
+        request must produce a container with the overridden resources."""
+        build_request = CreateAgentRequest(
+            name="gpu-agent",
+            namespace="team1",
+            protocol="a2a",
+            framework="LangGraph",
+            deploymentMethod="source",
+            gitUrl="https://github.com/example/repo",
+            gitPath="agents/gpu",
+            gitBranch="main",
+            imageTag="v0.0.1",
+            k8sResourceLimits={"cpu": "2", "memory": "4Gi"},
+            k8sResourceRequests={"cpu": "500m", "memory": "1Gi"},
+        )
+        manifest = _build_agent_shipwright_build_manifest(build_request)
+        stored_config = json.loads(manifest["metadata"]["annotations"]["rossoctl.io/agent-config"])
+
+        # Mirrors how finalize_shipwright_build rebuilds the request: no explicit
+        # override on the finalize call, so the stored values are inherited.
+        finalize_request = FinalizeShipwrightBuildRequest()
+        rebuilt = CreateAgentRequest(
+            name="gpu-agent",
+            namespace="team1",
+            protocol="a2a",
+            framework="LangGraph",
+            deploymentMethod="image",
+            containerImage="registry.example.com/gpu-agent:v1",
+            k8sResourceLimits=(
+                finalize_request.k8sResourceLimits
+                if finalize_request.k8sResourceLimits is not None
+                else stored_config.get("k8sResourceLimits")
+            ),
+            k8sResourceRequests=(
+                finalize_request.k8sResourceRequests
+                if finalize_request.k8sResourceRequests is not None
+                else stored_config.get("k8sResourceRequests")
+            ),
+        )
+        deployment = _build_deployment_manifest(rebuilt, image="registry.example.com/gpu-agent:v1")
+
+        resources = deployment["spec"]["template"]["spec"]["containers"][0]["resources"]
+        assert resources["limits"] == {"cpu": "2", "memory": "4Gi"}
+        assert resources["requests"] == {"cpu": "500m", "memory": "1Gi"}
