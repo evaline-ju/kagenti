@@ -68,6 +68,33 @@ The type is metadata today; it does not change provisioning or lifecycle behavio
 This keeps the API shape forward-compatible without claiming type-specific semantics
 before they exist.
 
+## Workspace
+
+A **workspace** is a durable filesystem volume mounted at a chosen path inside an
+agent. Agents can use it for checked-out repositories, source files, intermediate
+results, and other mutable working data. Context Service currently implements every
+context type as a Kubernetes PersistentVolumeClaim (PVC), so `memory`, `knowledge`,
+and `artifacts` use the same filesystem mechanism today.
+
+### Access modes
+
+The access mode describes where Kubernetes may mount that volume for writing:
+
+| CLI | Kubernetes access mode | Meaning |
+| --- | --- | --- |
+| default | `ReadWriteOnce` (RWO) | Writable from Pods on one cluster node at a time |
+| `--shared` | `ReadWriteMany` (RWX) | Writable from Pods on multiple cluster nodes concurrently |
+
+RWO does not mean that only one Pod can access the volume, nor is it a security
+boundary. Multiple Pods on the same node may be able to mount it. RWX is useful when
+agents distributed across several nodes need the same files, but it requires a
+storage class and CSI driver that support `ReadWriteMany`.
+
+The storage class determines the actual storage system. For example,
+`ibm-scale-csi` can provision an IBM Storage Scale filesystem-backed PVC. Context
+Service exposes the Kubernetes storage contract and does not require callers to know
+the CSI driver's implementation details.
+
 ## Create and attach a context
 
 Create a shared GPFS workspace and inspect it:
@@ -124,3 +151,17 @@ rossoctl agents delete research-agent
 rossoctl agents delete research-sandbox
 rossoctl context delete research
 ```
+
+### Current usage and deletion behavior
+
+`rossoctl context list` currently reports whether storage is provisioning or ready;
+it does not report which agents mount it or an in-use count. Likewise, context
+deletion does not currently prompt or reject the request when an agent uses the
+volume.
+
+Kubernetes PVC protection prevents the underlying volume from being physically
+removed while a running Pod still mounts it. In that case Kubernetes may leave the
+PVC in `Terminating` state after the deletion request. This is a Kubernetes safety
+net, not a substitute for user-facing dependency checks. Until usage reporting and
+safe deletion are implemented, delete the attached agents before deleting their
+context, as shown above.
