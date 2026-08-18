@@ -35,7 +35,7 @@ Complete the items for your tier. See [FEATURE_ACCEPTANCE.md](../FEATURE_ACCEPTA
 - [ ] Names a persona/use-case, the problem, and evidence of demand
 - [ ] Maps to an epic / roadmap Key Result (or justifies opportunistic value)
 - [ ] **Working demo + example provided, runs in local Kind** (mandatory)
-- [ ] (Tier 2) Value scorecard: Impact __/5 · Reach __/5 · Effort __/5 · Fit __/5
+- [ ] (Tier 2) Value scorecard: Impact \_\_/5 · Reach \_\_/5 · Effort \_\_/5 · Fit \_\_/5
 
 ### Pillar 4 — Environment portability (Tier 1+)
 
