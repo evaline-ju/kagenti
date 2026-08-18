@@ -164,4 +164,6 @@ removed while a running Pod still mounts it. In that case Kubernetes may leave t
 PVC in `Terminating` state after the deletion request. This is a Kubernetes safety
 net, not a substitute for user-facing dependency checks. Until usage reporting and
 safe deletion are implemented, delete the attached agents before deleting their
-context, as shown above.
+context, as shown above. Follow
+[context-service#2](https://github.com/rossoctl/context-service/issues/2) for the
+usage-reporting and safe-deletion design.
