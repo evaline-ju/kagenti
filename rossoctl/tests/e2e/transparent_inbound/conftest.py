@@ -15,9 +15,13 @@ import time
 import pytest
 
 NAMESPACE = os.environ.get("TI_NAMESPACE", "ti-e2e")
+# A stand-in agent, not a real one: the suite tests the interception boundary,
+# not agent behavior. nginx-unprivileged is Alpine-based (so the same image
+# doubles as the probe, via busybox wget) and is already cached on Kind nodes.
 AGENT_IMAGE = os.environ.get(
-    "TI_AGENT_IMAGE", "ghcr.io/rossoctl/cortex/demos/echo-upstream:latest"
+    "TI_AGENT_IMAGE", "docker.io/nginxinc/nginx-unprivileged:1.29.1-alpine"
 )
+PROBE_IMAGE = os.environ.get("TI_PROBE_IMAGE", AGENT_IMAGE)
 # The port the agent binds. Under transparent interception it must stay this;
 # under reverse-proxy the operator relocates the agent off it.
 AGENT_PORT = int(os.environ.get("TI_AGENT_PORT", "8000"))
@@ -70,8 +74,17 @@ def _wait_ready(namespace: str, name: str, timeout: int):
             check=False,
         )
         last = out
-        if out.strip() in ("1/1",):
-            return
+        if out.strip() == "1/1":
+            # Ready alone is not enough: the AgentRuntime controller labels the
+            # pod template after the Deployment exists, so the FIRST ready pod
+            # may predate injection. Require the sidecar to be present.
+            pods = kubectl(
+                "get", "pods", "-n", namespace, "-l", f"app={name}",
+                "-o", "jsonpath={.items[*].spec.containers[*].name}",
+                check=False,
+            )
+            if "authbridge-proxy" in pods:
+                return
         time.sleep(3)
     # Dump enough to triage without re-running: pod status is where an
     # iptables/init failure or a port collision shows up.
@@ -98,8 +111,6 @@ kind: Deployment
 metadata:
   name: {name}
   namespace: {namespace}
-  labels:
-    rossoctl.io/type: agent
 spec:
   replicas: 1
   selector:
@@ -109,12 +120,24 @@ spec:
     metadata:
       labels:
         app: {name}
-        rossoctl.io/type: agent
     spec:
       containers:
         - name: agent
           image: {AGENT_IMAGE}
           imagePullPolicy: IfNotPresent
+          # Rewrite nginx's listen directive from PORT so this stand-in behaves
+          # like a PORT-honoring agent framework. Without that the reverse-proxy
+          # control could not be exercised: an agent that ignores PORT collides
+          # with AuthBridge on the stolen port and the pod never starts (which is
+          # itself one of the failure modes transparent interception removes).
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              sed -i "s/listen  *8080/listen ${{PORT:-{AGENT_PORT}}}/" /etc/nginx/conf.d/default.conf
+              exec nginx -g 'daemon off;'
+          env:
+            - name: PORT
+              value: "{AGENT_PORT}"
           ports:
             - containerPort: {AGENT_PORT}
 ---
@@ -129,11 +152,33 @@ spec:
   ports:
     - port: {AGENT_PORT}
       targetPort: {AGENT_PORT}
+---
+# The AgentRuntime is what marks this workload as an agent. The platform's
+# agent-label-protection ValidatingAdmissionPolicy rejects a hand-applied
+# rossoctl.io/type label, so injection must be driven through the CR — which is
+# also how agents are deployed for real.
+apiVersion: agent.rossoctl.dev/v1alpha1
+kind: AgentRuntime
+metadata:
+  name: {name}
+  namespace: {namespace}
+spec:
+  type: agent
+  mtlsMode: disabled
+  tlsBridgeMode: disabled
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {name}
 """
 
 
 def _ensure_namespace(namespace: str, mechanism: str):
     kubectl("create", "namespace", namespace, check=False)
+    # The injection webhook's namespaceSelector requires this label, so without
+    # it the pod comes up with no sidecar at all and every assertion here would
+    # be measuring an unprotected workload.
+    kubectl("label", "namespace", namespace, "rossoctl-enabled=true", "--overwrite")
     # Render then apply via stdin so a re-run updates rather than conflicts.
     cm = kubectl(
         "create", "configmap", "authbridge-runtime-config",
@@ -211,14 +256,22 @@ def curl_from_probe(namespace: str, url: str) -> int:
     path. Dialing from inside the agent pod would traverse loopback, which is
     inside the trust boundary and deliberately not intercepted.
     """
+    # busybox wget rather than curl: it ships in the Alpine agent image, which is
+    # already cached on the nodes, so the probe needs no registry pull. It writes
+    # the status line to stderr, hence the 2>&1.
     out = kubectl(
         "run", f"ti-probe-{int(time.time() * 1000) % 100000}",
         "-n", namespace, "--rm", "-i", "--restart=Never",
-        "--image=curlimages/curl:8.11.1", "--quiet", "--",
-        "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-        "--max-time", "15", url,
+        f"--image={PROBE_IMAGE}",
+        "--image-pull-policy=IfNotPresent", "--quiet",
+        "--command", "--",
+        "sh", "-c",
+        f"wget -q -S -T 15 -O /dev/null '{url}' 2>&1 | head -1",
         check=False,
     )
-    digits = "".join(ch for ch in out if ch.isdigit())
-    assert digits, f"probe produced no HTTP status for {url}; raw output: {out!r}"
-    return int(digits[-3:])
+    for token in out.split():
+        if token.isdigit() and len(token) == 3 and token[0] in "12345":
+            return int(token)
+    raise AssertionError(
+        f"probe produced no HTTP status for {url}; raw output: {out!r}"
+    )

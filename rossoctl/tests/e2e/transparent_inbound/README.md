@@ -20,6 +20,27 @@ be retired with it.
 - A cluster with the operator + authbridge images built from this branch.
 - `proxy.allowedInboundInterception` must permit `transparent` (the default).
 - Linux nodes: the feature is iptables-based. Skipped elsewhere.
+- **A namespace the platform can onboard.** The injected sidecar mounts a
+  per-agent Keycloak client-credentials Secret, created by the operator's
+  client-registration path. If that path is broken — e.g. the Keycloak CRD
+  (`k8s.keycloak.org/v2alpha1`) is absent, as on a cluster installed with the
+  community Keycloak provider — every injected pod stays `Pending` on
+  `FailedMount` and the suite errors in fixture setup regardless of this
+  feature. Check `kubectl describe pod` for a missing
+  `rossoctl-keycloak-client-credentials-*` Secret before debugging the
+  interception rules.
+
+Three platform constraints the fixtures satisfy, each of which otherwise
+produces a silently meaningless run:
+
+- The namespace needs `rossoctl-enabled=true`, or the injection webhook's
+  `namespaceSelector` skips it and the pod comes up with no sidecar at all.
+- `rossoctl.io/type` cannot be applied by hand — the `agent-label-protection`
+  ValidatingAdmissionPolicy rejects it. Injection is driven through an
+  AgentRuntime CR, which is how agents are deployed for real.
+- Readiness alone is not a usable gate: the AgentRuntime controller labels the
+  pod template *after* the Deployment exists, so the first ready pod predates
+  injection. The fixtures wait for the `authbridge-proxy` container.
 
 ```sh
 uv run pytest rossoctl/tests/e2e/transparent_inbound/ -v
