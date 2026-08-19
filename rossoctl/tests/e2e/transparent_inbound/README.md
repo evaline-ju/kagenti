@@ -15,20 +15,38 @@ port answers without validation. If that test ever fails because the bypass is
 gone, the default changed — which is a decision, not a bug, and the test should
 be retired with it.
 
+## Namespaces
+
+Runs in **pre-onboarded** namespaces (`team1`/`team2` by default, override with
+`TI_NS_TRANSPARENT` / `TI_NS_CONTROL`) rather than creating its own. A fresh
+namespace lacks the platform's per-namespace plumbing — `authbridge-config`, and
+the Keycloak client registration that produces each agent's credentials Secret —
+so an injected pod there never starts, for reasons unrelated to this feature.
+
+Each fixture flips the namespace's `inboundInterception` in place and **restores
+the original body on teardown**. These are shared namespaces: leaving one flipped
+would silently change every other agent in it on its next pod recreation.
+
 ## Requirements
 
 - A cluster with the operator + authbridge images built from this branch.
 - `proxy.allowedInboundInterception` must permit `transparent` (the default).
 - Linux nodes: the feature is iptables-based. Skipped elsewhere.
-- **A namespace the platform can onboard.** The injected sidecar mounts a
-  per-agent Keycloak client-credentials Secret, created by the operator's
-  client-registration path. If that path is broken — e.g. the Keycloak CRD
-  (`k8s.keycloak.org/v2alpha1`) is absent, as on a cluster installed with the
-  community Keycloak provider — every injected pod stays `Pending` on
-  `FailedMount` and the suite errors in fixture setup regardless of this
-  feature. Check `kubectl describe pod` for a missing
-  `rossoctl-keycloak-client-credentials-*` Secret before debugging the
-  interception rules.
+- **Working Keycloak client registration.** The injected sidecar mounts a
+  per-agent credentials Secret created by the operator. Where that path is broken
+  — e.g. the `k8s.keycloak.org/v2alpha1` CRD is absent, as on a cluster installed
+  with the community Keycloak provider — every injected pod stays `Pending` on
+  `FailedMount`, including default reverse-proxy ones. The suite **skips with that
+  cause named** rather than failing and pointing suspicion at the interception
+  rules.
+
+  To test the boundary anyway on such a cluster, set `TI_STUB_CREDENTIALS=1` to
+  create a placeholder Secret. This is opt-in on purpose: stubbing by default
+  would let the suite go green on a cluster whose Keycloak registration is
+  broken. The stub is sound for these assertions — the Secret is for *outbound*
+  token-exchange, and inbound validation rejects a request with no Authorization
+  header before any IdP contact — but it would **not** be sound for any test
+  needing a valid token.
 
 Three platform constraints the fixtures satisfy, each of which otherwise
 produces a silently meaningless run:

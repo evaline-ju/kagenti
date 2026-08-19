@@ -14,7 +14,13 @@ import time
 
 import pytest
 
-NAMESPACE = os.environ.get("TI_NAMESPACE", "ti-e2e")
+# Pre-onboarded namespaces rather than fresh ones. A new namespace lacks the
+# platform's per-namespace plumbing (authbridge-config, and the Keycloak client
+# registration that produces each agent's credentials Secret), so an injected pod
+# there never starts — for reasons that have nothing to do with this feature. The
+# installer creates team1/team2 already onboarded; use those.
+NS_TRANSPARENT = os.environ.get("TI_NS_TRANSPARENT", "team1")
+NS_CONTROL = os.environ.get("TI_NS_CONTROL", "team2")
 # A stand-in agent, not a real one: the suite tests the interception boundary,
 # not agent behavior. nginx-unprivileged is Alpine-based (so the same image
 # doubles as the probe, via busybox wget) and is already cached on Kind nodes.
@@ -63,10 +69,43 @@ def _namespace_config(mechanism: str) -> str:
     )
 
 
+def _stub_credentials(namespace: str, name: str) -> bool:
+    """Create a placeholder for the per-agent Keycloak credentials Secret.
+
+    Opt-in via TI_STUB_CREDENTIALS=1, and deliberately NOT the default: stubbing
+    by default would let this suite pass on a cluster whose Keycloak client
+    registration is broken, hiding a real platform failure behind a green run.
+
+    The stub is sound for what this suite asserts. The Secret is mounted for
+    OUTBOUND token-exchange; inbound validation rejects a request with no
+    Authorization header before any IdP contact, so its contents cannot influence
+    the 401 assertions. It would NOT be sound for a test that needs a valid token.
+    """
+    if os.environ.get("TI_STUB_CREDENTIALS") != "1":
+        return False
+    secret = kubectl(
+        "get", "pods", "-n", namespace, "-l", f"app={name}",
+        "-o", r"jsonpath={.items[*].metadata.annotations.rossoctl\.io/keycloak-client-credentials-secret-name}",
+        check=False,
+    ).split()
+    created = False
+    for sn in {s for s in secret if s}:
+        out = kubectl(
+            "create", "secret", "generic", sn, "-n", namespace,
+            "--from-literal=client-id.txt=" + name,
+            "--from-literal=client-secret.txt=stub-not-used-for-inbound-denial",
+            check=False,
+        )
+        if "created" in out or "already exists" in out:
+            created = True
+    return created
+
+
 def _wait_ready(namespace: str, name: str, timeout: int):
     """Block until the deployment reports all replicas ready."""
     deadline = time.monotonic() + timeout
     last = ""
+    stubbed = False
     while time.monotonic() < deadline:
         out = kubectl(
             "get", "deployment", name, "-n", namespace,
@@ -85,13 +124,26 @@ def _wait_ready(namespace: str, name: str, timeout: int):
             )
             if "authbridge-proxy" in pods:
                 return
+        if not stubbed:
+            stubbed = _stub_credentials(namespace, name)
         time.sleep(3)
-    # Dump enough to triage without re-running: pod status is where an
-    # iptables/init failure or a port collision shows up.
     pods = kubectl("get", "pods", "-n", namespace, "-o", "wide", check=False)
     events = kubectl(
         "get", "events", "-n", namespace, "--sort-by=.lastTimestamp", check=False
     )
+    # A missing per-agent Keycloak credentials Secret blocks EVERY injected pod,
+    # including default reverse-proxy ones, so it says nothing about this feature.
+    # Skip with the cause named rather than fail and point suspicion at the
+    # interception rules.
+    if "rossoctl-keycloak-client-credentials" in events and "not found" in events:
+        pytest.skip(
+            "(set TI_STUB_CREDENTIALS=1 to stub the Secret and test the "
+            "interception boundary anyway) "
+            "platform gap, not a feature failure: the per-agent Keycloak "
+            "client-credentials Secret was never created, so the injected pod "
+            "cannot mount it. Verify the operator's Keycloak client registration "
+            "works on this cluster (it needs the k8s.keycloak.org CRD)."
+        )
     raise AssertionError(
         f"deployment {namespace}/{name} not ready within {timeout}s "
         f"(readyReplicas={last})\npods:\n{pods}\nevents (tail):\n{events[-2000:]}"
@@ -173,20 +225,41 @@ spec:
 """
 
 
-def _ensure_namespace(namespace: str, mechanism: str):
-    kubectl("create", "namespace", namespace, check=False)
-    # The injection webhook's namespaceSelector requires this label, so without
-    # it the pod comes up with no sidecar at all and every assertion here would
-    # be measuring an unprotected workload.
-    kubectl("label", "namespace", namespace, "rossoctl-enabled=true", "--overwrite")
-    # Render then apply via stdin so a re-run updates rather than conflicts.
+def _read_namespace_config(namespace: str) -> str:
+    return kubectl(
+        "get", "configmap", "authbridge-runtime-config", "-n", namespace,
+        "-o", r"jsonpath={.data.config\.yaml}", check=False,
+    )
+
+
+def _write_namespace_config(namespace: str, body: str):
     cm = kubectl(
-        "create", "configmap", "authbridge-runtime-config",
-        "-n", namespace,
-        f"--from-literal=config.yaml={_namespace_config(mechanism)}",
+        "create", "configmap", "authbridge-runtime-config", "-n", namespace,
+        f"--from-literal=config.yaml={body}",
         "--dry-run=client", "-o", "yaml",
     )
     kubectl("apply", "-f", "-", stdin=cm)
+
+
+def _set_mechanism(namespace: str, mechanism: str) -> str:
+    """Prepend the inbound mechanism to the namespace config; return the original.
+
+    Edits in place rather than replacing the ConfigMap: the existing body carries
+    the namespace's real jwt-validation issuer and token-exchange settings, and a
+    synthetic replacement would exercise a pipeline no real deployment runs.
+    """
+    original = _read_namespace_config(namespace)
+    if not original.strip():
+        pytest.skip(
+            f"namespace {namespace} has no authbridge-runtime-config — not an "
+            "onboarded rossoctl namespace (set TI_NS_TRANSPARENT / TI_NS_CONTROL)"
+        )
+    body = (
+        f"inboundInterception: {mechanism}\n"
+        "egressEnforcement: enforce-redirect\n" + original.lstrip("\n")
+    )
+    _write_namespace_config(namespace, body)
+    return original
 
 
 @pytest.fixture(scope="session")
@@ -199,30 +272,45 @@ def linux_nodes():
     return True
 
 
+def _deploy(ns: str, name: str, mechanism: str) -> str:
+    original = _set_mechanism(ns, mechanism)
+    kubectl("apply", "-f", "-", stdin=_agent_manifest(ns, name))
+    try:
+        _wait_ready(ns, name, READY_TIMEOUT)
+    except BaseException:
+        _teardown(ns, name, original)
+        raise
+    return original
+
+
+def _teardown(ns: str, name: str, original: str):
+    if os.environ.get("TI_KEEP") == "1":
+        return
+    for kind in ("deployment", "service", "agentruntime"):
+        kubectl("delete", kind, name, "-n", ns, "--wait=false", check=False)
+    # Restoring the namespace config matters: these are SHARED namespaces, so
+    # leaving one flipped to transparent would silently change every other agent
+    # in it on its next pod recreation.
+    if original.strip():
+        _write_namespace_config(ns, original)
+
+
 @pytest.fixture(scope="session")
 def transparent_agent(linux_nodes):
     """Agent deployed with inboundInterception: transparent."""
-    ns = f"{NAMESPACE}-transparent"
-    name = "ti-agent"
-    _ensure_namespace(ns, "transparent")
-    kubectl("apply", "-f", "-", stdin=_agent_manifest(ns, name))
-    _wait_ready(ns, name, READY_TIMEOUT)
+    ns, name = NS_TRANSPARENT, "ti-e2e-agent"
+    original = _deploy(ns, name, "transparent")
     yield {"namespace": ns, "name": name}
-    if os.environ.get("TI_KEEP_NAMESPACE") != "1":
-        kubectl("delete", "namespace", ns, "--wait=false", check=False)
+    _teardown(ns, name, original)
 
 
 @pytest.fixture(scope="session")
 def reverse_proxy_agent(linux_nodes):
     """Control: agent deployed with the default port-stealing mechanism."""
-    ns = f"{NAMESPACE}-reverse"
-    name = "rp-agent"
-    _ensure_namespace(ns, "reverse-proxy")
-    kubectl("apply", "-f", "-", stdin=_agent_manifest(ns, name))
-    _wait_ready(ns, name, READY_TIMEOUT)
+    ns, name = NS_CONTROL, "ti-e2e-control"
+    original = _deploy(ns, name, "reverse-proxy")
     yield {"namespace": ns, "name": name}
-    if os.environ.get("TI_KEEP_NAMESPACE") != "1":
-        kubectl("delete", "namespace", ns, "--wait=false", check=False)
+    _teardown(ns, name, original)
 
 
 def agent_pod(namespace: str, name: str) -> dict:

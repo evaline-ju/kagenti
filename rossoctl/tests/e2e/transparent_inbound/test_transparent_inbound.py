@@ -40,9 +40,16 @@ def test_agent_keeps_its_own_port(transparent_agent):
         "transparent interception must leave the agent on its own port; "
         f"got {agent['ports'][0]['containerPort']}"
     )
-    assert env_of(agent, "PORT") is None, (
-        "transparent interception must not inject PORT — the agent is not relocated"
-    )
+    # Assert the operator did not REWRITE PORT, not that PORT is absent: the
+    # stand-in agent declares PORT itself (it must, or the reverse-proxy control
+    # cannot be exercised). Under port stealing the operator overwrites it with
+    # originalPort+1, so an unchanged value is the discriminator.
+    port_env = env_of(agent, "PORT")
+    if port_env is not None:
+        assert port_env.get("value") == str(AGENT_PORT), (
+            f"PORT was rewritten to {port_env.get('value')}; transparent "
+            f"interception must leave it at {AGENT_PORT}"
+        )
 
 
 def test_sidecar_binds_transparent_inbound_port(transparent_agent):
@@ -84,24 +91,31 @@ def test_proxy_init_configured_for_inbound_capture(transparent_agent):
 
 
 def test_ab_inbound_chain_installed(transparent_agent):
-    """The rules are actually live in the pod's netns, not merely configured."""
-    pod = agent_pod(**transparent_agent)
-    rules = kubectl(
-        "exec", pod["metadata"]["name"],
-        "-n", transparent_agent["namespace"],
-        "-c", "authbridge-proxy",
-        "--", "sh", "-c",
-        "iptables-save -t nat 2>/dev/null || iptables-nft-save -t nat",
-        check=False,
-    )
-    if not rules.strip():
-        pytest.skip("iptables-save unavailable in the sidecar image")
+    """proxy-init reports having installed the inbound capture.
 
-    assert "AB_INBOUND" in rules, (
-        f"AB_INBOUND chain missing from the pod's nat table:\n{rules[:1500]}"
+    Asserted from proxy-init's output rather than by running iptables-save in the
+    sidecar: that image has no iptables binary, so an exec-based check can only
+    skip — which silently drops the assertion. The init container states exactly
+    what it programmed, and it runs with require_jump guards that abort on a rule
+    that did not land, so its success line is a real signal rather than a log
+    scrape.
+    """
+    pod = agent_pod(**transparent_agent)
+    logs = kubectl(
+        "logs", pod["metadata"]["name"], "-n", transparent_agent["namespace"],
+        "-c", "proxy-init", check=False,
     )
-    assert "-A PREROUTING" in rules and "AB_INBOUND" in rules, (
-        "AB_INBOUND is not hooked from PREROUTING"
+    assert logs.strip(), "proxy-init produced no output — did it run?"
+    assert "transparent-inbound: hard inbound boundary active" in logs, (
+        f"proxy-init did not complete inbound setup:\n{logs[-1500:]}"
+    )
+    assert "IPv4 inbound capture configured" in logs, (
+        f"IPv4 inbound capture not configured:\n{logs[-1500:]}"
+    )
+    # The exempt set must include the sidecar's own ports, or a JWT-gated :9091
+    # crash-loops the pod.
+    assert "9091" in logs and "exempt sidecar ports" in logs, (
+        f"sidecar port exemptions not reported:\n{logs[-1500:]}"
     )
 
 
@@ -198,18 +212,21 @@ def test_session_api_not_gated(transparent_agent):
 
 
 def test_egress_enforcement_still_active(transparent_agent):
-    """Inbound capture must not have disturbed the egress guard's chains."""
+    """Inbound capture must not have disturbed the egress guard.
+
+    Same reasoning as the chain test: read proxy-init's report rather than exec
+    iptables in an image that has none.
+    """
     pod = agent_pod(**transparent_agent)
-    rules = kubectl(
-        "exec", pod["metadata"]["name"],
-        "-n", transparent_agent["namespace"],
-        "-c", "authbridge-proxy",
-        "--", "sh", "-c",
-        "iptables-save -t nat 2>/dev/null || iptables-nft-save -t nat",
-        check=False,
+    logs = kubectl(
+        "logs", pod["metadata"]["name"], "-n", transparent_agent["namespace"],
+        "-c", "proxy-init", check=False,
     )
-    if not rules.strip():
-        pytest.skip("iptables-save unavailable in the sidecar image")
-    assert "AB_REDIRECT" in rules, (
-        "AB_REDIRECT (egress guard) missing after enabling inbound capture"
+    assert "enforce-redirect: fail-closed egress capture active" in logs, (
+        f"egress guard not active after enabling inbound capture:\n{logs[-1500:]}"
     )
+    # Ordering matters: the ambient inbound DNAT is installed at the head of the
+    # egress chain, so egress setup must complete before inbound setup begins.
+    assert logs.index("fail-closed egress capture active") < logs.index(
+        "installing inbound capture"
+    ), "inbound setup ran before the egress chain existed"
