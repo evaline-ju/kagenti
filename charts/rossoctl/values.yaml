@@ -27,6 +27,10 @@ featureFlags:
   skills: false
   # External skill registry references (skillberry-store, etc.)
   externalSkills: false
+  # Skill "dreaming": feed an agent's new trajectories to a RunSpace optimization
+  # run (via the store's ask-runspace plugin) to improve the skills it used.
+  # Requires the skillberry-store installed with the ask-runspace plugin.
+  dreaming: false
   # Enables AuthBridge tab on Agent details page
   # Show this UI by default (we'll remove gate after a version where it can be disabled with a flag)
   authbridgeAPI: true
@@ -208,6 +212,10 @@ ui:
   backend:
     image: ghcr.io/rossoctl/rossoctl/backend
     tag: v0.7.0-alpha.6
+    # Optional Context Service API URL. Empty disables context resource APIs and
+    # agent context attachments. Example:
+    # http://context-service.serverless-harness.svc.cluster.local:8080
+    contextServiceUrl: ""
     # Default registry for source-based builds (Kind: registry.cr-system.svc.cluster.local:5000)
     defaultRegistryUrl: ""
     # Default Shipwright build strategy for internal registries
@@ -272,6 +280,16 @@ apiOAuthSecret:
   serviceAccountRole: rossoctl-operator
   # When true, use the in-cluster serviceaccount CA for SSL verification
   useServiceAccountCA: false
+
+# ------------------------------------------------------------------
+#  Operator SPIFFE Authentication Bootstrap Job Configuration
+#  Used by charts/rossoctl/templates/operator-client-bootstrap-job.yaml when
+#  operator-chart.spiffe.operatorAuth.enabled=true. Built by this repo's
+#  build.yaml CI workflow — kept in sync via scripts/pin-release-tags.sh.
+# ------------------------------------------------------------------
+operatorSpiffeBootstrap:
+  image: ghcr.io/rossoctl/rossoctl/operator-spiffe-bootstrap
+  tag: latest
 
 # ------------------------------------------------------------------
 #  Keycloak Configuration

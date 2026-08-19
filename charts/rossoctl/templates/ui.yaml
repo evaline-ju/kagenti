@@ -29,6 +29,7 @@ data:
   TRACE_ANALYSIS_DASHBOARD_URL: ""
   {{- end }}
   NETWORK_TRAFFIC_DASHBOARD_URL: "http://kiali.{{ .Values.ui.domainName }}:8080"
+  DATA_GOVERNANCE_DASHBOARD_URL: "http://dg.{{ .Values.ui.domainName }}:8080"
   MCP_INSPECTOR_URL: "http://mcp-inspector.{{ .Values.ui.domainName }}:8080"
   # Proxy served on the inspector host under /mcp-proxy by the nginx sidecar
   # (single origin).
@@ -145,6 +146,10 @@ spec:
             - name: SKILL_REGISTRY_ALLOWED_HOSTS
               value: {{ .Values.ui.backend.skillRegistryAllowedHosts | quote }}
             {{- end }}
+            {{- if .Values.ui.backend.contextServiceUrl }}
+            - name: CONTEXT_SERVICE_URL
+              value: {{ .Values.ui.backend.contextServiceUrl | quote }}
+            {{- end }}
             # Feature flags
             - name: ROSSOCTL_FEATURE_FLAG_SANDBOX
               value: "{{ .Values.featureFlags.sandbox }}"
@@ -158,6 +163,8 @@ spec:
               value: "{{ .Values.featureFlags.skills }}"
             - name: ROSSOCTL_FEATURE_FLAG_EXTERNAL_SKILLS
               value: "{{ .Values.featureFlags.externalSkills }}"
+            - name: ROSSOCTL_FEATURE_FLAG_DREAMING
+              value: "{{ .Values.featureFlags.dreaming }}"
             - name: ROSSOCTL_FEATURE_FLAG_AUTHBRIDGE_API
               value: "{{ .Values.featureFlags.authbridgeAPI }}"
             - name: ROSSOCTL_FEATURE_FLAG_ADMIN
@@ -188,6 +195,12 @@ spec:
                 configMapKeyRef:
                   name: "{{ .Values.ui.configmap }}"
                   key: "MLFLOW_DASHBOARD_URL"
+                  optional: true
+            - name: DATA_GOVERNANCE_DASHBOARD_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: "{{ .Values.ui.configmap }}"
+                  key: "DATA_GOVERNANCE_DASHBOARD_URL"
                   optional: true
             - name: TRACE_ANALYSIS_DASHBOARD_URL
               valueFrom:

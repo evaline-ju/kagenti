@@ -1,59 +1,55 @@
----
-draft: true       # excluded from https://www.rossoctl.dev/
----
-
 # Automation Health Dashboard
 
-> Last updated: 2026-07-22 13:01 ET | Programs: 3 active
+> Last updated: 2026-08-04 13:00 ET | Programs: 3 active
 
 ## Executive Summary
 
 | Metric | Value |
 |--------|-------|
-| Total issues auto-created | 121 (link-health: 82, dep-bump: 39) |
-| Total issues auto-resolved | 29 |
+| Total issues auto-created | 163 (link-health: 114, dep-bump: 49) |
+| Total issues auto-resolved | 43 |
 | Total PRs auto-opened | 0 |
-| Estimated hours saved | 7.2 hrs (at 15 min/resolved issue) |
-| PRs reviewed by clawgenti | 79 |
+| Estimated hours saved | 10.8 hrs (at 15 min/resolved issue) |
+| PRs reviewed by clawgenti | 99 |
 | Programs active | 3 |
-| Last successful scan | 2026-07-21 |
+| Last successful scan | 2026-08-04 |
 
 ## Link Health
 
 | Metric | Value | Trend |
 |--------|-------|-------|
-| Repos scanned | 21 | |
-| Total links checked | 5566 | |
-| Broken (internal) | 28 | -56 from first scan |
-| Broken (external) | 601 | +571 from first scan |
-| Issues created (cumulative) | 82 | |
-| Issues resolved (cumulative) | 13 | |
+| Repos scanned | 0 | |
+| Total links checked | 0 | |
+| Broken (internal) | 0 | -84 from first scan |
+| Broken (external) | 0 | -30 from first scan |
+| Issues created (cumulative) | 114 | |
+| Issues resolved (cumulative) | 27 | |
 
 ### Trend (last 10 scans)
 
 | Date | Internal | External | Delta |
 |------|----------|----------|-------|
+| 2026-08-04 | 0 | 0 | -26 |
+| 2026-07-31 | 14 | 12 | -10 |
+| 2026-07-29 | 24 | 12 | -699 |
+| 2026-07-27 | 89 | 646 | +29 |
+| 2026-07-24 | 53 | 653 | +77 |
 | 2026-07-20 | 28 | 601 | -26 |
 | 2026-07-17 | 32 | 623 | -8 |
 | 2026-07-15 | 33 | 630 | +42 |
 | 2026-07-10 | 30 | 591 | +6 |
 | 2026-07-08 | 31 | 584 | +567 |
-| 2026-06-29 | 30 | 18 | 0 |
-| 2026-06-26 | 30 | 18 | +2 |
-| 2026-06-24 | 29 | 17 | -1 |
-| 2026-06-22 | 29 | 18 | +3 |
-| 2026-06-19 | 29 | 15 | 0 |
 
 ## Dependency Bumps
 
 | Metric | Value | Trend |
 |--------|-------|-------|
-| Repos scanned | 25 | |
-| Open Dependabot PRs | 0 | |
-| Stale PRs (SLA breached) | 0 | baseline: 8 |
-| SLA compliance rate | 100% | |
+| Repos scanned | 8 | |
+| Open Dependabot PRs | 62 | |
+| Stale PRs (SLA breached) | 16 | baseline: 8 |
+| SLA compliance rate | 74% | |
 | Median time-to-merge | 0d | baseline: 1d |
-| Dependabot coverage | 0% (0/25 repos) | |
+| Dependabot coverage | 50% (4/8 repos) | |
 
 ### By Severity Tier
 
@@ -62,23 +58,23 @@ draft: true       # excluded from https://www.rossoctl.dev/
 | Critical | 0 | 3d |
 | High | 0 | 7d |
 | Medium | 0 | 30d |
-| Routine | 0 | 14d |
+| Routine | 16 | 14d |
 | Major | 0 | 30d |
 
 ### Patch Velocity (last 10 scans)
 
 | Date | Stale Security | Stale Routine | Delta |
 |------|----------------|---------------|-------|
+| 2026-08-04 | 0 | 16 | +16 |
+| 2026-07-30 | 0 | 0 | 0 |
+| 2026-07-28 | 0 | 0 | 0 |
+| 2026-07-28 | 0 | 0 | 0 |
+| 2026-07-23 | 0 | 0 | 0 |
 | 2026-07-21 | 0 | 0 | -6 |
 | 2026-07-16 | 3 | 3 | -1 |
 | 2026-07-14 | 3 | 4 | -4 |
 | 2026-07-09 | 4 | 7 | +11 |
 | 2026-07-07 | 0 | 0 | -13 |
-| 2026-07-02 | 7 | 4 | -4 |
-| 2026-06-30 | 8 | 7 | +4 |
-| 2026-06-25 | 4 | 9 | +1 |
-| 2026-06-23 | 4 | 8 | +8 |
-| 2026-06-18 | 3 | 1 | +1 |
 
 ## PR Review Bot
 
@@ -88,10 +84,10 @@ Headline impact — median time-to-merge before vs. after the bot became active 
 |--------|-------|------|
 | Median TTM — before activation | 10.4h | per repo, PRs opened before its first bot review |
 | Median TTM — after activation | 12.9h | per repo, PRs opened on/after its first bot review |
-| PRs reviewed (cumulative) | 79 | failed: 0 |
+| PRs reviewed (cumulative) | 99 | failed: 0 |
 | Currently queued for review | 0 | |
 
-> Per-repo activation: rossoctl/rossoctl since 2026-06-12; rossoctl/cortex since 2026-06-13; rossoctl/automation since 2026-06-16; rossoctl/agent-skills since 2026-06-16
+> Per-repo activation: kagenti/kagenti since 2026-06-12; kagenti/kagenti-extensions since 2026-06-13; kagenti/automation since 2026-06-16; kagenti/agent-skills since 2026-06-16
 
 Reviewed vs. unreviewed (secondary — interpret with care):
 
@@ -106,56 +102,45 @@ Reviewed vs. unreviewed (secondary — interpret with care):
 
 | Date (UTC) | Reviewed | Processed | Failed |
 |------------|----------|-----------|--------|
-| 2026-07-16 16:53 | 1 | 1 | 0 |
-| 2026-07-16 16:37 | 1 | 1 | 0 |
-| 2026-07-16 15:22 | 1 | 1 | 0 |
-| 2026-07-16 03:52 | 1 | 1 | 0 |
-| 2026-07-15 20:07 | 1 | 1 | 0 |
-| 2026-07-15 18:52 | 1 | 1 | 0 |
-| 2026-07-15 18:39 | 1 | 1 | 0 |
-| 2026-07-15 15:16 | 2 | 2 | 0 |
-| 2026-07-15 12:09 | 1 | 1 | 0 |
-| 2026-07-15 11:25 | 1 | 1 | 0 |
+| 2026-08-01 09:55 | 1 | 1 | 0 |
+| 2026-07-30 19:07 | 1 | 1 | 0 |
+| 2026-07-30 18:37 | 1 | 1 | 0 |
+| 2026-07-30 17:52 | 1 | 1 | 0 |
+| 2026-07-29 20:52 | 1 | 1 | 0 |
+| 2026-07-29 17:52 | 1 | 1 | 0 |
+| 2026-07-29 17:21 | 2 | 2 | 0 |
+| 2026-07-29 13:06 | 1 | 1 | 0 |
+| 2026-07-28 16:22 | 1 | 1 | 0 |
+| 2026-07-28 15:07 | 1 | 1 | 0 |
 
 ## Cross-Program Coverage
 
 | Repo | Link Health | Dep Bump | PR Review | Programs |
 |------|-------------|----------|-----------|----------|
-| adk | yes | yes | no | 2 |
-| agent-examples | yes | yes | no | 2 |
-| agentic-control-plane | yes | no | no | 1 |
 | agent-skills | no | no | yes | 1 |
 | automation | no | no | yes | 1 |
-| ecosystem-guide | yes | no | no | 1 |
 | examples | no | yes | no | 1 |
-| kagenti | yes | no | yes | 2 |
-| kagenti-extensions | yes | no | yes | 2 |
-| kagenti-operator | yes | yes | no | 2 |
-| rossoctl | yes | no | yes | 2 |
-| cortex | no | no | yes | 1 |
-| rossoctl-operator | yes | yes | no | 2 |
-| OpenShell | yes | yes | no | 2 |
+| .github | no | yes | no | 1 |
+| kagenti | no | no | yes | 1 |
+| kagenti-extensions | no | no | yes | 1 |
 | operator | no | yes | no | 1 |
-| pi | yes | no | no | 1 |
-| rossoctl-cli | no | yes | no | 1 |
-| serverless-harness | yes | no | no | 1 |
 | workload-harness | no | yes | no | 1 |
 
 
 ### Coverage Summary
-- Repos under at least one program: 16 / 16 (100%)
-- Repos under all programs: 0 / 16 (0%)
+- Repos under at least one program: 8 / 8 (100%)
+- Repos under all programs: 0 / 8 (0%)
 
 ## Cron Health
 
 | Job | Schedule | Last Run | Status |
 |-----|----------|----------|--------|
-| link-health-scanner | Mon/Wed/Fri 7am ET | 2026-07-21 | ok |
-| link-health-fixer | Tue/Thu 8am ET | 2026-07-21 | ok |
-| dep-bump-scanner | Tue/Thu 10am ET | 2026-07-21 | ok |
-| dep-bump-fixer | Tue/Thu 12pm ET | 2026-07-21 | ok |
-| pr-review-scanner | every ~15 min | 2026-07-21 | ok |
-| pr-review-fixer | every ~15 min | 2026-07-21 | ok |
+| link-health-scanner | Mon/Wed/Fri 7am ET | 2026-08-04 | ok |
+| link-health-fixer | Tue/Thu 8am ET | 2026-08-04 | ok |
+| dep-bump-scanner | Tue/Thu 10am ET | 2026-08-04 | ok |
+| dep-bump-fixer | Tue/Thu 12pm ET | 2026-08-04 | ok |
+| pr-review-scanner | every ~15 min | 2026-08-04 | ok |
+| pr-review-fixer | every ~15 min | 2026-08-04 | ok |
 
 ---
-*Generated by Rossoctl Automation Health Dashboard. Do not edit manually.*
+*Generated by Kagenti Automation Health Dashboard. Do not edit manually.*

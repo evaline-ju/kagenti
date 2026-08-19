@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0
 
 # Stage 1: Build stage with uv
-FROM python:3.14-slim@sha256:5b3879b6f3cb77e712644d50262d05a7c146b7312d784a18eff7ff5462e77033 AS builder
+FROM python:3.14-slim@sha256:ce40764625a4ff50df3548277632e7f96c4e77fe75fa848aae9885476e7df5a4 AS builder
 
 WORKDIR /app
 
@@ -19,7 +19,7 @@ RUN uv venv /app/.venv && \
     uv pip install --no-cache -r pyproject.toml
 
 # Stage 2: Runtime stage
-FROM python:3.14-slim@sha256:5b3879b6f3cb77e712644d50262d05a7c146b7312d784a18eff7ff5462e77033
+FROM python:3.14-slim@sha256:ce40764625a4ff50df3548277632e7f96c4e77fe75fa848aae9885476e7df5a4
 
 WORKDIR /app
 
@@ -33,13 +33,20 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
-RUN groupadd -r appgroup && useradd -r -g appgroup appuser
+RUN groupadd -r -g 1001 appgroup && useradd -r -u 1001 -g appgroup appuser
 
 # Copy virtual environment from builder
 COPY --from=builder /app/.venv /app/.venv
 
 # Copy application code
 COPY backend/app/ ./app/
+
+# Bake the release tag in as the reported backend version. Mirrors what
+# ui-v2/Dockerfile does to package.json, so the backend's GET /auth/config and the
+# UI's version badge report the same string from the same source. CI passes
+# RELEASE_TAG for every image in the build matrix (.github/workflows/build.yaml).
+ARG RELEASE_TAG=unknown
+ENV ROSSOCTL_BACKEND_VERSION=${RELEASE_TAG}
 
 # Set environment variables
 ENV PATH="/app/.venv/bin:$PATH"
@@ -55,14 +62,14 @@ ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 RUN chown -R appuser:appgroup /app
 
 # Switch to non-root user
-USER appuser
+USER 1001
 
 # Expose port
 EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
 
 # Run the application
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

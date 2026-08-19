@@ -1,4 +1,5 @@
 ---
+draft: true       # excluded from https://www.rossoctl.dev/
 description: Are you an Agent Developer, MCP Gateway Operator, or deployer?
 sidebar_label: Personas and Roles
 ---
@@ -391,7 +392,7 @@ Review Identity Patterns in [identity documentation](docs/concepts/identity-guid
 |------------|------------------|
 | **[rossoctl](https://github.com/rossoctl/rossoctl)** | Platform Operator, UI Developer, End User |
 | **[agent-examples](https://github.com/rossoctl/examples)** | Agent Developer, Tool Developer |
-| **[mcp-gateway](https://github.com/rossoctl/mcp-gateway)** | MCP Gateway Developer, MCP Gateway Operator |
+| **[mcp-gateway](https://github.com/Kuadrant/mcp-gateway)** | MCP Gateway Developer, MCP Gateway Operator |
 | **[rossoctl-operator](https://github.com/rossoctl/operator)** | Operator Developer, Platform Operator |
 | **[cortex](https://github.com/rossoctl/cortex)** | Extensions Developer |
 | **[agentic-control-plane](https://github.com/rossoctl/agentic-control-plane)** | Extensions Developer, Agent Developer |
@@ -410,7 +411,7 @@ The Rossoctl platform serves **10 core personas** across eight specialized repos
 
 **Get Involved**:
 
-- 🌐 **Website**: [rossoctl.io](http://rossoctl.io)
+- 🌐 **Website**: [rossoctl.io](https://www.rossoctl.dev/)
 - 💬 **Slack**: [Join our community](https://ibm.biz/rossoctl-slack)
 - 📖 **Blog**: [Rossoctl Medium Publication](https://medium.com/rossoctl-the-agentic-platform)
 - 🐙 **GitHub**: [github.com/rossoctl](https://github.com/rossoctl)

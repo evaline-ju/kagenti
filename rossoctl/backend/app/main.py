@@ -117,6 +117,17 @@ if settings.rossoctl_feature_flag_skills:
             "SKILLS flag enabled but skills modules not installed — skipping"
         )
 
+_contexts_module_loaded = False
+if settings.context_service_url.strip():
+    try:
+        from app.routers import contexts  # noqa: E402
+
+        _contexts_module_loaded = True
+    except ImportError:
+        logging.getLogger(__name__).warning(
+            "CONTEXT_SERVICE flag enabled but context module not installed — skipping"
+        )
+
 _acp_modules_loaded = False
 if settings.rossoctl_feature_flag_acp:
     try:
@@ -137,6 +148,17 @@ if settings.rossoctl_feature_flag_simulated_tools:
     except ImportError:
         logging.getLogger(__name__).warning(
             "SIMULATED_TOOLS flag enabled but simulation modules not installed — skipping"
+        )
+
+_dreaming_modules_loaded = False
+if settings.rossoctl_feature_flag_dreaming:
+    try:
+        from app.routers import dream  # noqa: E402
+
+        _dreaming_modules_loaded = True
+    except ImportError:
+        logging.getLogger(__name__).warning(
+            "DREAMING flag enabled but dreaming modules not installed — skipping"
         )
 # pylint: enable=wrong-import-position,no-name-in-module,import-error
 
@@ -280,6 +302,10 @@ if _skills_modules_loaded:
     app.include_router(skills.router, prefix="/api/v1")
     logger.info("Feature flag SKILLS enabled — skills routes registered")
 
+if _contexts_module_loaded:
+    app.include_router(contexts.router, prefix="/api/v1")
+    logger.info("Feature flag CONTEXT_SERVICE enabled — context routes registered")
+
 if _acp_modules_loaded:
     app.include_router(acp.router, prefix="/api/v1")
     logger.info("Feature flag ACP enabled — ACP WebSocket routes registered")
@@ -287,6 +313,10 @@ if _acp_modules_loaded:
 if _simulation_modules_loaded:
     app.include_router(simulation.router, prefix="/api/v1")
     logger.info("Feature flag SIMULATED_TOOLS enabled — simulation routes registered")
+
+if _dreaming_modules_loaded:
+    app.include_router(dream.router, prefix="/api/v1")
+    logger.info("Feature flag DREAMING enabled — dreaming routes registered")
 # pylint: enable=used-before-assignment
 
 

@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     debug: bool = False
     domain_name: str = "localtest.me"
 
+    # Version reported by GET /auth/config. backend/Dockerfile bakes this in from
+    # the RELEASE_TAG build arg — the same source ui-v2/Dockerfile substitutes into
+    # package.json for the UI version badge — so both report the same string.
+    # Empty (local dev/tests) falls back to rossoctl-backend package metadata.
+    rossoctl_backend_version: str = ""
+
     @property
     def is_running_in_cluster(self) -> bool:
         """Check if the backend is running inside a Kubernetes cluster."""
@@ -109,6 +115,18 @@ class Settings(BaseSettings):
     simulation_provision_timeout: int = 180
     # Auto-inject MCP_URL / LLM env vars on agent import (TUI parity; weather demo defaults)
     rossoctl_feature_flag_agent_import_defaults: bool = False
+    # Skill "dreaming": feed an agent's new trajectories to a RunSpace optimization
+    # run (via the store's ask-runspace plugin) to improve the skills it used.
+    rossoctl_feature_flag_dreaming: bool = False
+    # Max number of new-trajectory spans fed into a single dream run (size cap).
+    dreaming_max_events: int = 200
+    # Phoenix base URL dreaming reads trajectories from. Empty → in-cluster
+    # phoenix service (http://phoenix.rossoctl-system.svc.cluster.local:6006).
+    dreaming_phoenix_url: str = ""
+    # Phoenix project holding the agent's spans. Empty → use the agent name (ideal
+    # when traces are routed per-agent); set to a shared project (e.g. "default")
+    # when all agents export to one project.
+    dreaming_phoenix_project: str = ""
     skill_autosync_interval: int = (
         30  # seconds between registry sync checks (env: SKILL_AUTOSYNC_INTERVAL)
     )
@@ -120,6 +138,9 @@ class Settings(BaseSettings):
     skill_registry_allowed_hosts: str = ""
     # Trace-analysis Observability card (links to the standalone trace-analysis component)
     rossoctl_feature_flag_trace_analysis: bool = False  # Trace-analysis Observability card
+    # Named context resources and agent attachments. An empty URL disables the integration.
+    context_service_url: str = ""
+    context_service_timeout: float = 10.0
 
     # AuthBridge runtime config (mounted from Helm-managed ConfigMap)
     authbridge_runtime_config_path: str = "/etc/rossoctl/authbridge/config.yaml"
@@ -134,6 +155,7 @@ class Settings(BaseSettings):
     network_dashboard_url: str = ""
     mlflow_dashboard_url: str = ""
     trace_analysis_dashboard_url: str = ""
+    data_governance_dashboard_url: str = ""
     mcp_inspector_url: str = ""
     mcp_proxy_full_address: str = ""
     keycloak_console_url: str = ""

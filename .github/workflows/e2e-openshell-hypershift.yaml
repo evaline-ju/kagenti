@@ -125,17 +125,17 @@ jobs:
 
     steps:
       - name: Checkout PR code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           ref: ${{ needs.authorize.outputs.pr_sha || github.sha }}
 
       - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.12'
 
       - name: Install uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
 
       - name: Install tools (kubectl, Helm, oc, hcp)
         run: |
@@ -149,7 +149,7 @@ jobs:
           version: 'v3.17.0'
 
       - name: Setup Go (for hcp CLI)
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: '1.24'
           cache: false
@@ -161,7 +161,7 @@ jobs:
         run: bash .github/scripts/hypershift/ci/40-clone-hypershift-automation.sh
 
       - name: Install uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
 
       - name: Install dependencies
         run: uv sync --frozen
@@ -204,7 +204,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Setup credentials
         run: bash .github/scripts/hypershift/ci/10-setup-credentials.sh
@@ -217,7 +217,7 @@ jobs:
         run: bash .github/scripts/hypershift/ci/20-install-tools.sh
 
       - name: Setup Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: '1.24'
           cache: false
