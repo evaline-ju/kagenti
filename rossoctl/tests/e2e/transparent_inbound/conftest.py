@@ -84,14 +84,25 @@ def _stub_credentials(namespace: str, name: str) -> bool:
     if os.environ.get("TI_STUB_CREDENTIALS") != "1":
         return False
     secret = kubectl(
-        "get", "pods", "-n", namespace, "-l", f"app={name}",
-        "-o", r"jsonpath={.items[*].metadata.annotations.rossoctl\.io/keycloak-client-credentials-secret-name}",
+        "get",
+        "pods",
+        "-n",
+        namespace,
+        "-l",
+        f"app={name}",
+        "-o",
+        r"jsonpath={.items[*].metadata.annotations.rossoctl\.io/keycloak-client-credentials-secret-name}",
         check=False,
     ).split()
     created = False
     for sn in {s for s in secret if s}:
         out = kubectl(
-            "create", "secret", "generic", sn, "-n", namespace,
+            "create",
+            "secret",
+            "generic",
+            sn,
+            "-n",
+            namespace,
             "--from-literal=client-id.txt=" + name,
             "--from-literal=client-secret.txt=stub-not-used-for-inbound-denial",
             check=False,
@@ -108,8 +119,13 @@ def _wait_ready(namespace: str, name: str, timeout: int):
     stubbed = False
     while time.monotonic() < deadline:
         out = kubectl(
-            "get", "deployment", name, "-n", namespace,
-            "-o", "jsonpath={.status.readyReplicas}/{.status.replicas}",
+            "get",
+            "deployment",
+            name,
+            "-n",
+            namespace,
+            "-o",
+            "jsonpath={.status.readyReplicas}/{.status.replicas}",
             check=False,
         )
         last = out
@@ -118,8 +134,14 @@ def _wait_ready(namespace: str, name: str, timeout: int):
             # pod template after the Deployment exists, so the FIRST ready pod
             # may predate injection. Require the sidecar to be present.
             pods = kubectl(
-                "get", "pods", "-n", namespace, "-l", f"app={name}",
-                "-o", "jsonpath={.items[*].spec.containers[*].name}",
+                "get",
+                "pods",
+                "-n",
+                namespace,
+                "-l",
+                f"app={name}",
+                "-o",
+                "jsonpath={.items[*].spec.containers[*].name}",
                 check=False,
             )
             if "authbridge-proxy" in pods:
@@ -227,16 +249,28 @@ spec:
 
 def _read_namespace_config(namespace: str) -> str:
     return kubectl(
-        "get", "configmap", "authbridge-runtime-config", "-n", namespace,
-        "-o", r"jsonpath={.data.config\.yaml}", check=False,
+        "get",
+        "configmap",
+        "authbridge-runtime-config",
+        "-n",
+        namespace,
+        "-o",
+        r"jsonpath={.data.config\.yaml}",
+        check=False,
     )
 
 
 def _write_namespace_config(namespace: str, body: str):
     cm = kubectl(
-        "create", "configmap", "authbridge-runtime-config", "-n", namespace,
+        "create",
+        "configmap",
+        "authbridge-runtime-config",
+        "-n",
+        namespace,
         f"--from-literal=config.yaml={body}",
-        "--dry-run=client", "-o", "yaml",
+        "--dry-run=client",
+        "-o",
+        "yaml",
     )
     kubectl("apply", "-f", "-", stdin=cm)
 
@@ -348,12 +382,20 @@ def curl_from_probe(namespace: str, url: str) -> int:
     # already cached on the nodes, so the probe needs no registry pull. It writes
     # the status line to stderr, hence the 2>&1.
     out = kubectl(
-        "run", f"ti-probe-{int(time.time() * 1000) % 100000}",
-        "-n", namespace, "--rm", "-i", "--restart=Never",
+        "run",
+        f"ti-probe-{int(time.time() * 1000) % 100000}",
+        "-n",
+        namespace,
+        "--rm",
+        "-i",
+        "--restart=Never",
         f"--image={PROBE_IMAGE}",
-        "--image-pull-policy=IfNotPresent", "--quiet",
-        "--command", "--",
-        "sh", "-c",
+        "--image-pull-policy=IfNotPresent",
+        "--quiet",
+        "--command",
+        "--",
+        "sh",
+        "-c",
         f"wget -q -S -T 15 -O /dev/null '{url}' 2>&1 | head -1",
         check=False,
     )

@@ -102,8 +102,13 @@ def test_ab_inbound_chain_installed(transparent_agent):
     """
     pod = agent_pod(**transparent_agent)
     logs = kubectl(
-        "logs", pod["metadata"]["name"], "-n", transparent_agent["namespace"],
-        "-c", "proxy-init", check=False,
+        "logs",
+        pod["metadata"]["name"],
+        "-n",
+        transparent_agent["namespace"],
+        "-c",
+        "proxy-init",
+        check=False,
     )
     assert logs.strip(), "proxy-init produced no output — did it run?"
     assert "transparent-inbound: hard inbound boundary active" in logs, (
@@ -206,9 +211,7 @@ def test_session_api_not_gated(transparent_agent):
     status = curl_from_probe(
         transparent_agent["namespace"], f"http://{pod['status']['podIP']}:9094/sessions"
     )
-    assert status not in (401, 403), (
-        f"session-events API is behind auth (got {status})"
-    )
+    assert status not in (401, 403), f"session-events API is behind auth (got {status})"
 
 
 def test_egress_enforcement_still_active(transparent_agent):
@@ -219,8 +222,13 @@ def test_egress_enforcement_still_active(transparent_agent):
     """
     pod = agent_pod(**transparent_agent)
     logs = kubectl(
-        "logs", pod["metadata"]["name"], "-n", transparent_agent["namespace"],
-        "-c", "proxy-init", check=False,
+        "logs",
+        pod["metadata"]["name"],
+        "-n",
+        transparent_agent["namespace"],
+        "-c",
+        "proxy-init",
+        check=False,
     )
     assert "enforce-redirect: fail-closed egress capture active" in logs, (
         f"egress guard not active after enabling inbound capture:\n{logs[-1500:]}"
