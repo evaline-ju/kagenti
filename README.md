@@ -104,17 +104,17 @@ To learn how to deploy agents and MCP tools, follow the **[Weather Agent Demo](h
 | Topic | Link |
 |-------|------|
 | **Installation** | [Installation Guide](./docs/getting-started/install.md) (Kind & OpenShift) |
-| **Components** | [Component Details](./docs/components.md) |
+| **Components** | [Component Details](./docs/concepts/components.md) |
 | **Demos & Tutorials** | [Demo Documentation](./docs/demos/README.md) |
 | **Developing Rossoctl Apps** | [Application Development Guide](./docs/developing-rossoctl-app.md) · [App Demo Example](./rossoctl/examples/app-demo/README.md) |
-| **Import Your Own Agent** | [New Agent Guide](./docs/new-agent.md) |
-| **Import Your Own Tool** | [New Tool Guide](./docs/new-tool.md) |
-| **Skills Configuration & Usage** | [Skills Guide](./docs/skills.md) |
+| **Import Your Own Agent** | [New Agent Guide](./docs/getting-started/new-agent.md) |
+| **Import Your Own Tool** | [New Tool Guide](./docs/getting-started/new-tool.md) |
+| **Skills Configuration & Usage** | [Skills Guide](./docs/concepts/skills.md) |
 | **Architecture Details** | [Technical Details](./docs/concepts/tech-details.md) |
 | **Identity, Security, and Auth Bridge** | [Identity and Auth Bridge](./docs/concepts/identity-guide.md) |
 | **Fine-Grained Zero-Trust Access Control** | [Access Control](./docs/access-control/README.md) |
 | **Developer Guide** | [Contributing](./docs/dev-guide.md) |
-| **Troubleshooting** | [Troubleshooting Guide](./docs/troubleshooting.md) |
+| **Troubleshooting** | [Troubleshooting Guide](./docs/users-guides/troubleshooting.md) |
 | **Blog Posts** | [Rossoctl Blog](./docs/blogs.md) |
 
 ## Supported Protocols
