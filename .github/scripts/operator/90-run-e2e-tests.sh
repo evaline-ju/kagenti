@@ -44,7 +44,11 @@ fi
 # Support filtering tests via PYTEST_FILTER or PYTEST_ARGS
 # PYTEST_FILTER: pytest -k filter expression (e.g., "test_mlflow" or "TestGenAI")
 # PYTEST_ARGS: additional pytest arguments (e.g., "-x" for stop on first failure)
-PYTEST_TARGETS="${PYTEST_TARGETS:-tests/e2e/common tests/e2e/rossoctl_operator}"
+# transparent_inbound self-gates: it skips with a named reason when the deployed
+# platform predates transparent inbound interception, or when the per-agent
+# Keycloak credentials Secret cannot be created. So including it here is safe on
+# older images and becomes a real gate as soon as they carry the feature.
+PYTEST_TARGETS="${PYTEST_TARGETS:-tests/e2e/common tests/e2e/rossoctl_operator tests/e2e/transparent_inbound}"
 PYTEST_OPTS="-v --timeout=300 --tb=short"
 
 if [ -n "${PYTEST_FILTER:-}" ]; then

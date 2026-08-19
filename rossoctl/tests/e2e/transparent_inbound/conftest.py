@@ -9,6 +9,7 @@ isolation. A single-shape run cannot distinguish "validation works" from
 
 import json
 import os
+import re
 import subprocess
 import time
 
@@ -51,22 +52,25 @@ def kubectl(*args, check=True, stdin=None):
     return proc.stdout
 
 
+def kubectl_rc(*args) -> int:
+    """Run kubectl and return only its exit code.
+
+    Needed because kubectl reports conditions like "already exists" on STDERR,
+    which kubectl() drops — so a caller that must distinguish "created" from
+    "already satisfied" cannot do it by inspecting stdout.
+    """
+    return subprocess.run(
+        ["kubectl", *args], capture_output=True, text=True, timeout=120
+    ).returncode
+
+
+# Secrets this suite created, so teardown can remove them. Module-level because
+# the fixture that creates them is not the one that cleans up.
+_stubbed: list = []
+
+
 def kubectl_json(*args):
     return json.loads(kubectl(*args, "-o", "json"))
-
-
-def _namespace_config(mechanism: str) -> str:
-    """authbridge-runtime-config for a namespace.
-
-    inboundInterception is a namespace-scoped switch (the pod mutator has no
-    access to the AgentRuntime CR), so the mechanism is selected here rather
-    than per-agent. That is why each mechanism needs its own namespace.
-    """
-    return (
-        "mode: proxy-sidecar\n"
-        f"inboundInterception: {mechanism}\n"
-        "egressEnforcement: enforce-redirect\n"
-    )
 
 
 def _stub_credentials(namespace: str, name: str) -> bool:
@@ -75,6 +79,9 @@ def _stub_credentials(namespace: str, name: str) -> bool:
     Opt-in via TI_STUB_CREDENTIALS=1, and deliberately NOT the default: stubbing
     by default would let this suite pass on a cluster whose Keycloak client
     registration is broken, hiding a real platform failure behind a green run.
+
+    Anything created is recorded in _stubbed so teardown removes it: a placeholder
+    credential Secret must not outlive the run in a shared namespace.
 
     The stub is sound for what this suite asserts. The Secret is mounted for
     OUTBOUND token-exchange; inbound validation rejects a request with no
@@ -96,7 +103,10 @@ def _stub_credentials(namespace: str, name: str) -> bool:
     ).split()
     created = False
     for sn in {s for s in secret if s}:
-        out = kubectl(
+        # Keyed on the exit code, not on stdout: kubectl writes "already exists"
+        # to stderr, which kubectl() drops — so matching stdout would report
+        # failure forever and re-attempt the create on every poll.
+        rc = kubectl_rc(
             "create",
             "secret",
             "generic",
@@ -105,9 +115,12 @@ def _stub_credentials(namespace: str, name: str) -> bool:
             namespace,
             "--from-literal=client-id.txt=" + name,
             "--from-literal=client-secret.txt=stub-not-used-for-inbound-denial",
-            check=False,
         )
-        if "created" in out or "already exists" in out:
+        # Recorded either way: if it already exists, a previous run of THIS suite
+        # created it and it still needs removing.
+        if (namespace, sn) not in _stubbed:
+            _stubbed.append((namespace, sn))
+        if rc == 0:
             created = True
     return created
 
@@ -288,9 +301,17 @@ def _set_mechanism(namespace: str, mechanism: str) -> str:
             f"namespace {namespace} has no authbridge-runtime-config — not an "
             "onboarded rossoctl namespace (set TI_NS_TRANSPARENT / TI_NS_CONTROL)"
         )
+    # Strip keys a previous run may have left before prepending. Prepending blind
+    # is not idempotent: with TI_KEEP=1, or after a killed run that skipped
+    # teardown, the next run would emit duplicate top-level YAML keys.
+    stripped = "\n".join(
+        line
+        for line in original.splitlines()
+        if not re.match(r"^(inboundInterception|egressEnforcement)\s*:", line)
+    )
     body = (
         f"inboundInterception: {mechanism}\n"
-        "egressEnforcement: enforce-redirect\n" + original.lstrip("\n")
+        "egressEnforcement: enforce-redirect\n" + stripped.lstrip("\n")
     )
     _write_namespace_config(namespace, body)
     return original
@@ -311,10 +332,40 @@ def _deploy(ns: str, name: str, mechanism: str) -> str:
     kubectl("apply", "-f", "-", stdin=_agent_manifest(ns, name))
     try:
         _wait_ready(ns, name, READY_TIMEOUT)
+        _require_platform_support(ns, name, mechanism)
     except BaseException:
         _teardown(ns, name, original)
         raise
     return original
+
+
+def _require_platform_support(ns: str, name: str, mechanism: str):
+    """Skip when the deployed platform predates transparent inbound.
+
+    This suite runs in the shared e2e target list, so it executes against whatever
+    images a cluster happens to have. An operator that does not know
+    `inboundInterception` silently ignores the namespace flip and port-steals
+    instead — which would fail the transparent assertions for a reason that has
+    nothing to do with the code under test. Detect it from the injected pod (the
+    sidecar declares `transparent-in` only when the feature is present) and skip
+    with the cause named.
+    """
+    if mechanism != "transparent":
+        return
+    pod = agent_pod(ns, name)
+    proxy = next(
+        (c for c in pod["spec"]["containers"] if c["name"] == "authbridge-proxy"),
+        None,
+    )
+    if proxy is None:
+        return  # a missing sidecar is a real failure; let the tests report it
+    if not any(p.get("name") == "transparent-in" for p in proxy.get("ports", [])):
+        pytest.skip(
+            "deployed platform predates transparent inbound interception: the "
+            "injected sidecar declares no transparent-in port, so the namespace's "
+            "inboundInterception was ignored. Needs an operator and authbridge "
+            "built with rossoctl/cortex#330."
+        )
 
 
 def _teardown(ns: str, name: str, original: str):
@@ -327,6 +378,13 @@ def _teardown(ns: str, name: str, original: str):
     # in it on its next pod recreation.
     if original.strip():
         _write_namespace_config(ns, original)
+    # Remove any placeholder credentials Secret this suite created. Leaving a fake
+    # credential in a shared namespace is worse than the gap it papered over.
+    for entry in [t for t in _stubbed if t[0] == ns]:
+        kubectl(
+            "delete", "secret", entry[1], "-n", entry[0], "--wait=false", check=False
+        )
+        _stubbed.remove(entry)
 
 
 @pytest.fixture(scope="session")

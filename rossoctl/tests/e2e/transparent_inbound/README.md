@@ -27,6 +27,18 @@ Each fixture flips the namespace's `inboundInterception` in place and **restores
 the original body on teardown**. These are shared namespaces: leaving one flipped
 would silently change every other agent in it on its next pod recreation.
 
+## Where it runs
+
+Included in the shared e2e target list in
+`.github/scripts/operator/90-run-e2e-tests.sh`, so it runs wherever that runner
+does (Kind and HyperShift e2e, release validation) rather than only by hand.
+
+It **self-gates** so that is safe on clusters running older images: if the injected
+sidecar declares no `transparent-in` port, the deployed operator ignored the
+namespace's `inboundInterception` and the suite skips with that cause named. It
+becomes a real gate as soon as the cluster's operator and authbridge carry the
+feature.
+
 ## Requirements
 
 - A cluster with the operator + authbridge images built from this branch.

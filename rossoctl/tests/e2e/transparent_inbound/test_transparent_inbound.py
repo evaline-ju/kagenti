@@ -117,10 +117,16 @@ def test_ab_inbound_chain_installed(transparent_agent):
     assert "IPv4 inbound capture configured" in logs, (
         f"IPv4 inbound capture not configured:\n{logs[-1500:]}"
     )
-    # The exempt set must include the sidecar's own ports, or a JWT-gated :9091
-    # crash-loops the pod.
-    assert "9091" in logs and "exempt sidecar ports" in logs, (
-        f"sidecar port exemptions not reported:\n{logs[-1500:]}"
+    # Parse the exemption line rather than substring-matching the whole log:
+    # "9091" appears in plenty of other contexts (ports, URLs, timestamps), so a
+    # whole-log check would pass even if the port were never exempted — and a
+    # JWT-gated :9091 crash-loops the pod.
+    exempt_line = next(
+        (ln for ln in logs.splitlines() if "exempt sidecar ports" in ln), ""
+    )
+    assert exempt_line, f"proxy-init did not report its exemptions:\n{logs[-1500:]}"
+    assert "9091" in exempt_line.split("exempt sidecar ports=", 1)[-1], (
+        f"health port 9091 missing from the exempt set: {exempt_line!r}"
     )
 
 
@@ -179,9 +185,14 @@ def test_reverse_proxy_control_bypass_is_reachable(reverse_proxy_agent):
         reverse_proxy_agent["namespace"],
         f"http://{pod['status']['podIP']}:{relocated}/",
     )
-    assert status != 401, (
-        f"relocated port {relocated} returned 401 — the bypass appears closed "
-        "under reverse-proxy, so this control test is obsolete"
+    # Asserts success, not merely "not 401": if the bypass were ever closed with a
+    # 403, or the port stopped answering at all, `!= 401` would keep this green and
+    # the control would silently stop being a control.
+    assert status == 200, (
+        f"relocated port {relocated} returned {status}, want 200. The bypass this "
+        "feature closes appears to be gone under reverse-proxy — if that is "
+        "intentional, the default changed and this control test should be retired "
+        "with it."
     )
 
 
@@ -235,6 +246,17 @@ def test_egress_enforcement_still_active(transparent_agent):
     )
     # Ordering matters: the ambient inbound DNAT is installed at the head of the
     # egress chain, so egress setup must complete before inbound setup begins.
-    assert logs.index("fail-closed egress capture active") < logs.index(
-        "installing inbound capture"
-    ), "inbound setup ran before the egress chain existed"
+    # find(), not index(): index() raises ValueError when a marker is absent, so
+    # the assertion message would never print and the failure would surface as an
+    # unrelated traceback.
+    egress_at = logs.find("fail-closed egress capture active")
+    inbound_at = logs.find("installing inbound capture")
+    assert egress_at >= 0 and inbound_at >= 0, (
+        f"expected both setup markers in proxy-init output; "
+        f"egress={egress_at} inbound={inbound_at}\n{logs[-1500:]}"
+    )
+    assert egress_at < inbound_at, (
+        "inbound setup ran before the egress chain existed, so the ambient DNAT "
+        f"had no chain to be inserted at the head of (egress={egress_at} "
+        f"inbound={inbound_at})"
+    )
