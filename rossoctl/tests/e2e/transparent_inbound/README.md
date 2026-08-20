@@ -69,42 +69,47 @@ feature.
 - `proxy.allowedInboundInterception` must permit `transparent` (the default).
 - Linux nodes: the feature is iptables-based. Skipped elsewhere.
 - **Working Keycloak client registration.** The injected sidecar mounts a
-  per-agent credentials Secret the operator registers *asynchronously*. Where that
-  path does not complete, every injected pod stays `Pending` on `FailedMount` —
-  including default reverse-proxy ones — so it says nothing about interception. The
-  suite **skips with the cause named** rather than failing and pointing suspicion
-  at the interception rules. Two causes are known and they need distinguishing:
+  per-agent credentials Secret the operator's ClientRegistration controller creates
+  *asynchronously*. Where that path does not complete, every injected pod stays
+  `Pending` on `FailedMount` — including default reverse-proxy ones — so it says
+  nothing about interception. The suite **skips with the cause named** rather than
+  failing and pointing suspicion at the interception rules.
 
-  1. **On Kind, registration is intermittent.** `.github/workflows/e2e-kind.yaml`
-     carries an explicit wait loop for these Secrets and marks the token-exchange
-     suite `continue-on-error` for exactly this reason.
-  2. **The `k8s.keycloak.org/v2alpha1` CRD is absent**, as on community-provider
-     installs. Then *no* agent in the cluster ever gets a Secret.
+  The controller logs its exact reason and then requeues every 30s, so read the
+  log rather than guessing:
 
-  Check `kubectl get crd | grep k8s.keycloak.org`, and whether other agents have
-  credentials Secrets, before suspecting this feature.
+  ```sh
+  kubectl logs -n rossoctl-system deployment/rossoctl-controller-manager \
+    | grep -E 'cannot resolve|waiting for|registration failed|skipping'
+  ```
 
-  > **This suite is currently inert in CI.** All of its tests skip on the shared
-  > Kind e2e run via cause (1) above — verified on the run for #2404. That has
-  > been true since the suite merged, so CI passing is **not** evidence these
-  > tests ran. Until it is resolved, the meaningful signal is a local run with
-  > `TI_STUB_CREDENTIALS=1`. Making it gate in CI means either fixing registration
-  > or setting `TI_STUB_CREDENTIALS=1` in the runner — the latter reverses the
-  > opt-in reasoning below, so it is a deliberate call, not a default.
+  The reason that bit this suite, and the reason the fixtures create a dedicated
+  ServiceAccount, is documented at the manifest in `conftest.py`: with SPIRE
+  enabled the controller derives the Keycloak client ID from the **Deployment pod
+  template's** `serviceAccountName` and refuses on `default`. The AuthBridge
+  webhook does create a per-agent SA and set it on the **pod**, but never on the
+  template — so the webhook's fixup is invisible to the controller, and the pod
+  ends up mounting a Secret that the controller has already declined to create.
+  That split is a platform defect, tracked separately; setting the SA ourselves is
+  the half we control. Note the `k8s.keycloak.org` CRD is **not** in this path —
+  the controller uses Keycloak's admin REST API directly.
 
-  To test the boundary anyway on such a cluster, set `TI_STUB_CREDENTIALS=1` to
-  create a placeholder Secret. This is opt-in on purpose: stubbing by default
-  would let the suite go green on a cluster whose Keycloak registration is
-  broken. The stub is sound for these assertions — the Secret is for *outbound*
-  token-exchange, and inbound validation rejects a request with no Authorization
-  header before any IdP contact — but it would **not** be sound for any test
-  needing a valid token.
+  `TI_STUB_CREDENTIALS=1` creates a placeholder Secret so the interception
+  boundary can still be tested on a cluster where registration is genuinely
+  broken. It is opt-in on purpose: stubbing by default would let the suite go
+  green on such a cluster. The stub is sound for these assertions — the Secret is
+  for *outbound* token-exchange, and inbound validation rejects a request with no
+  Authorization header before any IdP contact — but it would **not** be sound for
+  any test needing a valid token.
 
-Three platform constraints the fixtures satisfy, each of which otherwise
+Four platform constraints the fixtures satisfy, each of which otherwise
 produces a silently meaningless run:
 
 - The namespace needs `rossoctl-enabled=true`, or the injection webhook's
   `namespaceSelector` skips it and the pod comes up with no sidecar at all.
+- The pod template needs an explicit `serviceAccountName` (a dedicated SA, not
+  `default`), or with SPIRE enabled the credentials Secret is never created and
+  every pod stays `FailedMount` forever. See the requirement above.
 - `rossoctl.io/type` cannot be applied by hand — the `agent-label-protection`
   ValidatingAdmissionPolicy rejects it. Injection is driven through an
   AgentRuntime CR, which is how agents are deployed for real.

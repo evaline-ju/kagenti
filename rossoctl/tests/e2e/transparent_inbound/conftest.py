@@ -180,15 +180,21 @@ def _wait_ready(namespace: str, name: str, timeout: int):
             "interception boundary anyway) "
             "platform gap, not a feature failure: the per-agent Keycloak "
             "client-credentials Secret was never created, so the injected pod "
-            "cannot mount it. The operator registers the client asynchronously; "
-            "two causes are known, so check which one applies rather than "
-            "assuming: (1) on Kind, client registration is intermittent — "
-            "e2e-kind.yaml carries an explicit wait loop and marks the "
-            "token-exchange suite continue-on-error for exactly this; (2) the "
-            "k8s.keycloak.org CRD is absent, as on community-provider installs, "
-            "in which case no agent in the cluster ever gets a Secret. Check "
-            "`kubectl get crd | grep k8s.keycloak.org` and whether OTHER agents "
-            "have credentials Secrets before suspecting this feature."
+            "cannot mount it. This blocks EVERY injected pod, including default "
+            "reverse-proxy ones, so it says nothing about interception. The "
+            "operator's ClientRegistration controller creates that Secret and "
+            "logs its exact reason for not doing so, then requeues every 30s — "
+            "so read the log rather than guessing:\n"
+            "  kubectl logs -n rossoctl-system deployment/rossoctl-controller-manager "
+            "| grep -E 'cannot resolve|waiting for|registration failed|skipping'\n"
+            "Known reasons, all of which it prints verbatim: the pod template's "
+            "serviceAccountName is 'default' while SPIRE is on (this suite sets a "
+            "dedicated SA precisely to avoid it — check the manifest still does); "
+            "KEYCLOAK_URL/KEYCLOAK_REALM absent from the namespace's "
+            "authbridge-config; the Keycloak admin Secret missing from "
+            "rossoctl-system; or the cluster feature gates disabling "
+            "clientRegistration. Note the k8s.keycloak.org CRD is NOT in this "
+            "path — the controller uses Keycloak's admin REST API directly."
         )
     raise AssertionError(
         f"deployment {namespace}/{name} not ready within {timeout}s "
@@ -204,6 +210,23 @@ def _agent_manifest(namespace: str, name: str) -> str:
     mechanisms apart.
     """
     return f"""
+# A dedicated ServiceAccount, named after the workload, is a hard requirement
+# rather than tidiness. With SPIRE enabled the operator's ClientRegistration
+# controller derives the Keycloak client ID from the pod template's
+# serviceAccountName; on "default" it refuses -- "SPIRE enabled: set
+# spec.template.spec.serviceAccountName to a dedicated ServiceAccount" -- and
+# requeues every 30s forever, so the per-agent credentials Secret is never
+# created and the injected pod never leaves FailedMount. The AuthBridge webhook
+# does create such an SA and sets it on the *pod*, but the controller reads the
+# *Deployment template*, which the webhook never touches, so the webhook's fixup
+# is invisible to it. Creating the SA explicitly is what the platform's own
+# agent deploy scripts do, and it is the only half of that pair we control here.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {name}
+  namespace: {namespace}
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -219,6 +242,7 @@ spec:
       labels:
         app: {name}
     spec:
+      serviceAccountName: {name}
       containers:
         - name: agent
           image: {AGENT_IMAGE}
@@ -406,7 +430,12 @@ def _require_platform_support(ns: str, name: str, mechanism: str):
 def _teardown(ns: str, name: str, original: str):
     if os.environ.get("TI_KEEP") == "1":
         return
-    for kind in ("deployment", "service", "agentruntime"):
+    # The ServiceAccount is deleted explicitly because nothing garbage-collects it:
+    # the AuthBridge webhook creates per-agent SAs with no ownerReference, so they
+    # outlive the workload. Ours is in the manifest, but the delete also sweeps one
+    # a pre-fix run of this suite left behind. The credentials Secret needs no entry
+    # here -- the controller owner-references it to the Deployment, so it GCs itself.
+    for kind in ("deployment", "service", "agentruntime", "serviceaccount"):
         kubectl("delete", kind, name, "-n", ns, "--wait=false", check=False)
     # Restoring the namespace config matters: these are SHARED namespaces, so
     # leaving one flipped to transparent would silently change every other agent
