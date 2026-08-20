@@ -39,15 +39,25 @@ READY_TIMEOUT = int(os.environ.get("TI_READY_TIMEOUT", "180"))
 SVID_SECRET_NAME = "ti-e2e-mtls-svid"
 
 
-def kubectl(*args, check=True, stdin=None):
-    """Run kubectl and return stdout. Raises on non-zero unless check=False."""
-    proc = subprocess.run(
+def kubectl_run(*args, stdin=None):
+    """Run kubectl and return the CompletedProcess (returncode, stdout, stderr).
+
+    The full result matters to any caller that must tell "the command failed" apart
+    from "the command succeeded and produced nothing" — kubectl() collapses both to
+    an empty string.
+    """
+    return subprocess.run(
         ["kubectl", *args],
         capture_output=True,
         text=True,
         input=stdin,
         timeout=120,
     )
+
+
+def kubectl(*args, check=True, stdin=None):
+    """Run kubectl and return stdout. Raises on non-zero unless check=False."""
+    proc = kubectl_run(*args, stdin=stdin)
     if check and proc.returncode != 0:
         raise RuntimeError(
             f"kubectl {' '.join(args)} failed ({proc.returncode}):\n"
@@ -63,9 +73,7 @@ def kubectl_rc(*args) -> int:
     which kubectl() drops — so a caller that must distinguish "created" from
     "already satisfied" cannot do it by inspecting stdout.
     """
-    return subprocess.run(
-        ["kubectl", *args], capture_output=True, text=True, timeout=120
-    ).returncode
+    return kubectl_run(*args).returncode
 
 
 # Secrets this suite created, so teardown can remove them. Module-level because
@@ -476,6 +484,33 @@ def mtls_strict_agent(linux_nodes):
     _teardown(ns, name, original)
 
 
+def _skip_or_fail_svid(filename: str, pod: str, proc) -> None:
+    """Decide whether an unreadable SVID file is a legitimate skip or a failure.
+
+    Only one cause justifies skipping the completed-handshake test: SPIRE genuinely
+    supplied no SVID, which surfaces as ``cat`` reporting the file does not exist.
+    Everything else — a renamed container, a moved path, a pod mid-restart, a
+    transient API error — is an infrastructure regression, and skipping on it would
+    silently green the one security-critical case in this module. So: skip on
+    proven absence, raise on anything unexplained.
+    """
+    stderr = (proc.stderr or "").strip()
+    # Matches both coreutils ("cat: /opt/x: No such file or directory") and busybox
+    # ("cat: can't open '/opt/x': No such file or directory"). Deliberately not the
+    # broader "not found", which also matches "executable file not found" (no cat in
+    # the image) and "container not found" — neither of which is an absent SVID.
+    if "no such file" in stderr.lower():
+        pytest.skip(
+            f"sidecar has no /opt/{filename}: SPIRE is not supplying SVIDs on this "
+            "cluster, so a completed-handshake test is not possible here"
+        )
+    raise RuntimeError(
+        f"could not read /opt/{filename} from {pod}/authbridge-proxy "
+        f"(exit {proc.returncode}) — refusing to skip the mTLS handshake test on an "
+        f"unexplained failure:\nstdout: {proc.stdout!r}\nstderr: {stderr!r}"
+    )
+
+
 @pytest.fixture(scope="module")
 def svid_secret(mtls_strict_agent):
     """Stage the agent sidecar's own SVID as a Secret a probe pod can mount.
@@ -489,28 +524,29 @@ def svid_secret(mtls_strict_agent):
     ns, name = mtls_strict_agent["namespace"], mtls_strict_agent["name"]
     pod = agent_pod(ns, name)["metadata"]["name"]
     args = ["create", "secret", "generic", SVID_SECRET_NAME, "-n", ns]
-    for f in ("svid.pem", "svid_key.pem", "svid_bundle.pem"):
-        data = kubectl(
-            "exec",
-            pod,
-            "-n",
-            ns,
-            "-c",
-            "authbridge-proxy",
-            "--",
-            "cat",
-            f"/opt/{f}",
-            check=False,
-        )
-        if not data.strip():
-            pytest.skip(
-                f"sidecar has no /opt/{f}: SPIRE is not supplying SVIDs on this "
-                "cluster, so a completed-handshake test is not possible here"
+    # A private 0700 directory, removed on the way out: the SVID *private key*
+    # passes through here, and an SVID being short-lived is not a reason to leave
+    # key material on the runner. The context manager also covers the skip/raise
+    # paths below, which an explicit unlink at the end would not.
+    with tempfile.TemporaryDirectory(prefix=f"{SVID_SECRET_NAME}-") as tmpdir:
+        for f in ("svid.pem", "svid_key.pem", "svid_bundle.pem"):
+            proc = kubectl_run(
+                "exec",
+                pod,
+                "-n",
+                ns,
+                "-c",
+                "authbridge-proxy",
+                "--",
+                "cat",
+                f"/opt/{f}",
             )
-        path = pathlib.Path(tempfile.gettempdir()) / f"{SVID_SECRET_NAME}-{f}"
-        path.write_text(data)
-        args.append(f"--from-file={f}={path}")
-    rendered = kubectl(*args, "--dry-run=client", "-o", "yaml")
+            if proc.returncode != 0 or not proc.stdout.strip():
+                _skip_or_fail_svid(f, pod, proc)
+            path = pathlib.Path(tmpdir) / f
+            path.write_text(proc.stdout)
+            args.append(f"--from-file={f}={path}")
+        rendered = kubectl(*args, "--dry-run=client", "-o", "yaml")
     kubectl("apply", "-f", "-", stdin=rendered)
     yield SVID_SECRET_NAME
     kubectl("delete", "secret", SVID_SECRET_NAME, "-n", ns, "--wait=false", check=False)

@@ -123,7 +123,13 @@ def test_strict_terminates_tls_on_the_recovered_connection(mtls_strict_agent):
         f'curl -sS -k -o /dev/null -w "code=%{{http_code}}" --max-time 15 '
         f"https://{ip}:{AGENT_PORT}/ 2>&1 | tail -3",
     )
-    assert "certificate required" in out.lower() or "alert" in out.lower(), (
+    # Specifically a *missing client certificate* alert, not any alert at all: this
+    # case is C's control, so accepting e.g. a handshake_failure would let it pass
+    # for reasons unrelated to client-cert verification. Go's tls.Server sends
+    # certificate_required under TLS 1.3 and bad_certificate under 1.2 when a
+    # caller presents no certificate, so both spellings are legitimate here.
+    lowered = out.lower()
+    assert "certificate required" in lowered or "bad certificate" in lowered, (
         "expected a TLS alert demanding a client certificate, which is what proves "
         f"server-side TLS terminated here:\n{out}"
     )
