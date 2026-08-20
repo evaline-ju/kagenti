@@ -21,6 +21,7 @@ be retired with it.
 |---|---|
 | `test_transparent_inbound.py` | The bypass property, injected shape, multi-port capture, sidecar ports, egress |
 | `test_transparent_inbound_mtls.py` | Inbound mTLS through the transparent listener (rossoctl/cortex#780) |
+| `test_transparent_inbound_ambient.py` | The same bypass property on the Istio ambient / HBONE path (rossoctl/cortex#780) |
 
 The mTLS module closes a gap the first one could not see. The transparent
 listener reuses the reverse proxy's mTLS posture via `WrapListener`, and the
@@ -38,6 +39,38 @@ namespace: it sets up and tears down within itself, restoring from a baseline
 captured before the suite touched the namespace, so module order cannot change
 the namespace's final state. It skips when SPIRE supplies no SVIDs, since a
 completed-handshake assertion is not possible there.
+
+The ambient module covers a path the other two structurally cannot reach. Without
+a ztunnel, a pod-to-pod dial arrives as ordinary TCP and is captured in
+`nat PREROUTING` by `AB_INBOUND`. Under ambient it never reaches `PREROUTING` at
+all: ztunnel terminates HBONE on `:15008` and re-originates a local connection,
+which surfaces in `nat OUTPUT` and is captured by a separate mark-based DNAT at
+the head of `AB_REDIRECT` — ahead of that chain's ztunnel-mark `RETURN`. Two
+paths, two rules, and the same 401 either way, so no other test can tell which
+one carried the request. Hence `test_hbone_delivered_request_is_validated`
+asserts the **path** as well as the status, from ztunnel's own access log:
+without that, the module silently degrades into a duplicate of
+`test_direct_pod_dial_is_validated` the moment ambient stops being engaged.
+
+Removing that one DNAT rule from a live pod's netns makes the mesh-delivered
+request return **200** — the app answering unvalidated — and the module fails
+with that diagnosis, while the health-port test keeps passing. Rule ordering and
+packet counters are not asserted directly: they are not reachable from a test
+pod, and every way the rule can regress (deleted, ordered after the mark
+`RETURN`, matching too narrowly) ends in that same 200. The counter-level
+evidence for the rules as programmed is recorded on rossoctl/cortex#780.
+
+Unlike the other two modules it is deliberately **not** `kind_only`. The platform
+ships the ambient data plane on OpenShift only — `charts/rossoctl-deps/templates/istio-operand.yaml`
+gates the `Istio`, `IstioCNI` and `ZTunnel` operands on `.Values.openshift`, and
+`deployments/envs/dev_values*.yaml` set it false — so a Kind-only ambient test
+could never run where ambient actually is the shipped configuration. It self-gates
+on a ready ztunnel found by label across all namespaces (the platform chart uses
+`istio-ztunnel`, a community `istio/ztunnel` install defaults to `istio-system`,
+and neither changes the rule under test) plus `istio.io/dataplane-mode=ambient` on
+both namespaces, skipping with whichever is missing named. Being unmarked makes it
+the first module here to run on OpenShift, so its first run there may surface
+pre-existing suite or platform issues rather than ambient ones.
 
 ## Namespaces
 
