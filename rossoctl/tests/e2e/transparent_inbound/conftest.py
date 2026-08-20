@@ -9,8 +9,10 @@ isolation. A single-shape run cannot distinguish "validation works" from
 
 import json
 import os
+import pathlib
 import re
 import subprocess
+import tempfile
 import time
 
 import pytest
@@ -33,6 +35,8 @@ PROBE_IMAGE = os.environ.get("TI_PROBE_IMAGE", AGENT_IMAGE)
 # under reverse-proxy the operator relocates the agent off it.
 AGENT_PORT = int(os.environ.get("TI_AGENT_PORT", "8000"))
 READY_TIMEOUT = int(os.environ.get("TI_READY_TIMEOUT", "180"))
+# Secret holding a staged SVID for the mTLS module's probe pod.
+SVID_SECRET_NAME = "ti-e2e-mtls-svid"
 
 
 def kubectl(*args, check=True, stdin=None):
@@ -260,6 +264,22 @@ spec:
 """
 
 
+def _strip_top_level(body: str, keys: tuple, with_children: bool = False) -> str:
+    """Drop the given top-level YAML keys, optionally with their indented children."""
+    out, skipping = [], False
+    for line in body.splitlines():
+        if skipping:
+            # A blank line or any non-indented line ends the block.
+            if line.strip() and line[:1].isspace():
+                continue
+            skipping = False
+        if any(re.match(rf"^{k}\s*:", line) for k in keys):
+            skipping = with_children
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
 def _read_namespace_config(namespace: str) -> str:
     return kubectl(
         "get",
@@ -288,7 +308,14 @@ def _write_namespace_config(namespace: str, body: str):
     kubectl("apply", "-f", "-", stdin=cm)
 
 
-def _set_mechanism(namespace: str, mechanism: str) -> str:
+# The namespace config as it was before this suite touched it, captured once per
+# namespace. Fixtures restore from here rather than from whatever they observed,
+# so adding a second module that flips the same namespace cannot make restoration
+# order-dependent.
+_baseline: dict = {}
+
+
+def _set_mechanism(namespace: str, mechanism: str, mtls: str = "") -> str:
     """Prepend the inbound mechanism to the namespace config; return the original.
 
     Edits in place rather than replacing the ConfigMap: the existing body carries
@@ -296,6 +323,7 @@ def _set_mechanism(namespace: str, mechanism: str) -> str:
     synthetic replacement would exercise a pipeline no real deployment runs.
     """
     original = _read_namespace_config(namespace)
+    _baseline.setdefault(namespace, original)
     if not original.strip():
         pytest.skip(
             f"namespace {namespace} has no authbridge-runtime-config — not an "
@@ -304,15 +332,15 @@ def _set_mechanism(namespace: str, mechanism: str) -> str:
     # Strip keys a previous run may have left before prepending. Prepending blind
     # is not idempotent: with TI_KEEP=1, or after a killed run that skipped
     # teardown, the next run would emit duplicate top-level YAML keys.
-    stripped = "\n".join(
-        line
-        for line in original.splitlines()
-        if not re.match(r"^(inboundInterception|egressEnforcement)\s*:", line)
-    )
-    body = (
-        f"inboundInterception: {mechanism}\n"
-        "egressEnforcement: enforce-redirect\n" + stripped.lstrip("\n")
-    )
+    stripped = _strip_top_level(original, ("inboundInterception", "egressEnforcement"))
+    prefix = f"inboundInterception: {mechanism}\negressEnforcement: enforce-redirect\n"
+    if mtls:
+        # mtls is a nested block, so it cannot be prepended as a bare line the way
+        # the scalar keys are — and an existing block has to be removed with its
+        # indented children or the two would merge into one malformed mapping.
+        stripped = _strip_top_level(stripped, ("mtls",), with_children=True)
+        prefix += f"mtls:\n  mode: {mtls}\n"
+    body = prefix + stripped.lstrip("\n")
     _write_namespace_config(namespace, body)
     return original
 
@@ -327,8 +355,8 @@ def linux_nodes():
     return True
 
 
-def _deploy(ns: str, name: str, mechanism: str) -> str:
-    original = _set_mechanism(ns, mechanism)
+def _deploy(ns: str, name: str, mechanism: str, mtls: str = "") -> str:
+    original = _set_mechanism(ns, mechanism, mtls)
     kubectl("apply", "-f", "-", stdin=_agent_manifest(ns, name))
     try:
         _wait_ready(ns, name, READY_TIMEOUT)
@@ -376,8 +404,9 @@ def _teardown(ns: str, name: str, original: str):
     # Restoring the namespace config matters: these are SHARED namespaces, so
     # leaving one flipped to transparent would silently change every other agent
     # in it on its next pod recreation.
-    if original.strip():
-        _write_namespace_config(ns, original)
+    restore = _baseline.get(ns, original)
+    if restore.strip():
+        _write_namespace_config(ns, restore)
     # Remove any placeholder credentials Secret this suite created. Leaving a fake
     # credential in a shared namespace is worse than the gap it papered over.
     for entry in [t for t in _stubbed if t[0] == ns]:
@@ -394,6 +423,61 @@ def transparent_agent(linux_nodes):
     original = _deploy(ns, name, "transparent")
     yield {"namespace": ns, "name": name}
     _teardown(ns, name, original)
+
+
+@pytest.fixture(scope="module")
+def mtls_strict_agent(linux_nodes):
+    """Transparent agent with mTLS strict.
+
+    Module-scoped, not session-scoped: it flips the same namespace the permissive
+    fixture uses, so it must set up and tear down within its own module rather
+    than persisting for the session. Restoration comes from _baseline, so the
+    order the two modules run in cannot change the namespace's final state.
+    """
+    ns, name = NS_TRANSPARENT, "ti-e2e-mtls"
+    original = _deploy(ns, name, "transparent", mtls="strict")
+    yield {"namespace": ns, "name": name}
+    _teardown(ns, name, original)
+
+
+@pytest.fixture(scope="module")
+def svid_secret(mtls_strict_agent):
+    """Stage the agent sidecar's own SVID as a Secret a probe pod can mount.
+
+    Reuses the workload's real SVID rather than minting one: any identity in the
+    trust domain satisfies RequireAndVerifyClientCert, and borrowing the existing
+    one avoids standing up a second SPIRE registration just to hold a certificate.
+    The point of the test is that the handshake completes at all, not which
+    identity completes it.
+    """
+    ns, name = mtls_strict_agent["namespace"], mtls_strict_agent["name"]
+    pod = agent_pod(ns, name)["metadata"]["name"]
+    args = ["create", "secret", "generic", SVID_SECRET_NAME, "-n", ns]
+    for f in ("svid.pem", "svid_key.pem", "svid_bundle.pem"):
+        data = kubectl(
+            "exec",
+            pod,
+            "-n",
+            ns,
+            "-c",
+            "authbridge-proxy",
+            "--",
+            "cat",
+            f"/opt/{f}",
+            check=False,
+        )
+        if not data.strip():
+            pytest.skip(
+                f"sidecar has no /opt/{f}: SPIRE is not supplying SVIDs on this "
+                "cluster, so a completed-handshake test is not possible here"
+            )
+        path = pathlib.Path(tempfile.gettempdir()) / f"{SVID_SECRET_NAME}-{f}"
+        path.write_text(data)
+        args.append(f"--from-file={f}={path}")
+    rendered = kubectl(*args, "--dry-run=client", "-o", "yaml")
+    kubectl("apply", "-f", "-", stdin=rendered)
+    yield SVID_SECRET_NAME
+    kubectl("delete", "secret", SVID_SECRET_NAME, "-n", ns, "--wait=false", check=False)
 
 
 @pytest.fixture(scope="session")

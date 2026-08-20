@@ -15,6 +15,30 @@ port answers without validation. If that test ever fails because the bypass is
 gone, the default changed — which is a decision, not a bug, and the test should
 be retired with it.
 
+## Modules
+
+| Module | Covers |
+|---|---|
+| `test_transparent_inbound.py` | The bypass property, injected shape, multi-port capture, sidecar ports, egress |
+| `test_transparent_inbound_mtls.py` | Inbound mTLS through the transparent listener (rossoctl/cortex#780) |
+
+The mTLS module closes a gap the first one could not see. The transparent
+listener reuses the reverse proxy's mTLS posture via `WrapListener`, and the
+startup log said `mtls=true`, but no TLS client had ever been driven at it. The
+untested part is the *combination*: `SO_ORIGINAL_DST` recovery happens on the raw
+connection, before `tlssniff` peeks the first byte — had those interfered, the
+logs would still have looked correct. It asserts plaintext is refused under
+`strict` (so `tlssniff` is provably engaged, since the same request is a 401
+under permissive), that a ClientHello reaches a real server-side handshake, and
+that a valid SVID **completes** the handshake and then still gets a 401 from
+`jwt-validation` — transport authentication is not request authorization.
+
+It is module-scoped rather than session-scoped because it flips the same
+namespace: it sets up and tears down within itself, restoring from a baseline
+captured before the suite touched the namespace, so module order cannot change
+the namespace's final state. It skips when SPIRE supplies no SVIDs, since a
+completed-handshake assertion is not possible there.
+
 ## Namespaces
 
 Runs in **pre-onboarded** namespaces (`team1`/`team2` by default, override with
