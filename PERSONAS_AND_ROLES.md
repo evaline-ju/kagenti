@@ -35,7 +35,7 @@ Rossoctl is a cloud-native middleware platform that provides framework-neutral, 
 
 **Getting Started**:
 
-1. Review instructions in [new-agent](docs/new-agent.md) documentation
+1. Review instructions in [new-agent](docs/getting-started/new-agent.md) documentation
 2. Clone [agent-examples](https://github.com/rossoctl/examples) repository
 3. Explore framework-specific examples (`a2a/slack_researcher`, `a2a/weather_service`)
 4. Use sample Dockerfiles and configurations as templates

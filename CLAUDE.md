@@ -278,7 +278,7 @@ The work is the developer's; Claude Code assists. This applies to:
 ## Documentation
 
 - [Installation Guide](docs/getting-started/install.md)
-- [Components](docs/components.md)
+- [Components](docs/concepts/components.md)
 - [AI Ops / Claude Code](docs/ai-ops/README.md)
 - [Demos](docs/demos/README.md)
 - [AuthBridge Demos](https://github.com/rossoctl/cortex/blob/main/authbridge/demos/README.md) — Zero-trust agent demos (weather agent, github issue, webhook, multi-target) in cortex
