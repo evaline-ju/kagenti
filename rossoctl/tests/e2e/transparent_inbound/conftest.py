@@ -180,8 +180,15 @@ def _wait_ready(namespace: str, name: str, timeout: int):
             "interception boundary anyway) "
             "platform gap, not a feature failure: the per-agent Keycloak "
             "client-credentials Secret was never created, so the injected pod "
-            "cannot mount it. Verify the operator's Keycloak client registration "
-            "works on this cluster (it needs the k8s.keycloak.org CRD)."
+            "cannot mount it. The operator registers the client asynchronously; "
+            "two causes are known, so check which one applies rather than "
+            "assuming: (1) on Kind, client registration is intermittent — "
+            "e2e-kind.yaml carries an explicit wait loop and marks the "
+            "token-exchange suite continue-on-error for exactly this; (2) the "
+            "k8s.keycloak.org CRD is absent, as on community-provider installs, "
+            "in which case no agent in the cluster ever gets a Secret. Check "
+            "`kubectl get crd | grep k8s.keycloak.org` and whether OTHER agents "
+            "have credentials Secrets before suspecting this feature."
         )
     raise AssertionError(
         f"deployment {namespace}/{name} not ready within {timeout}s "

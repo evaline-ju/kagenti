@@ -69,12 +69,28 @@ feature.
 - `proxy.allowedInboundInterception` must permit `transparent` (the default).
 - Linux nodes: the feature is iptables-based. Skipped elsewhere.
 - **Working Keycloak client registration.** The injected sidecar mounts a
-  per-agent credentials Secret created by the operator. Where that path is broken
-  — e.g. the `k8s.keycloak.org/v2alpha1` CRD is absent, as on a cluster installed
-  with the community Keycloak provider — every injected pod stays `Pending` on
-  `FailedMount`, including default reverse-proxy ones. The suite **skips with that
-  cause named** rather than failing and pointing suspicion at the interception
-  rules.
+  per-agent credentials Secret the operator registers *asynchronously*. Where that
+  path does not complete, every injected pod stays `Pending` on `FailedMount` —
+  including default reverse-proxy ones — so it says nothing about interception. The
+  suite **skips with the cause named** rather than failing and pointing suspicion
+  at the interception rules. Two causes are known and they need distinguishing:
+
+  1. **On Kind, registration is intermittent.** `.github/workflows/e2e-kind.yaml`
+     carries an explicit wait loop for these Secrets and marks the token-exchange
+     suite `continue-on-error` for exactly this reason.
+  2. **The `k8s.keycloak.org/v2alpha1` CRD is absent**, as on community-provider
+     installs. Then *no* agent in the cluster ever gets a Secret.
+
+  Check `kubectl get crd | grep k8s.keycloak.org`, and whether other agents have
+  credentials Secrets, before suspecting this feature.
+
+  > **This suite is currently inert in CI.** All of its tests skip on the shared
+  > Kind e2e run via cause (1) above — verified on the run for #2404. That has
+  > been true since the suite merged, so CI passing is **not** evidence these
+  > tests ran. Until it is resolved, the meaningful signal is a local run with
+  > `TI_STUB_CREDENTIALS=1`. Making it gate in CI means either fixing registration
+  > or setting `TI_STUB_CREDENTIALS=1` in the runner — the latter reverses the
+  > opt-in reasoning below, so it is a deliberate call, not a default.
 
   To test the boundary anyway on such a cluster, set `TI_STUB_CREDENTIALS=1` to
   create a placeholder Secret. This is opt-in on purpose: stubbing by default
