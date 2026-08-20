@@ -194,7 +194,7 @@ ui:
   frontend:
     enabled: true
     image: ghcr.io/rossoctl/rossoctl/ui-v2
-    tag: v0.7.0-alpha.6
+    tag: v0.8.0-alpha.1
     resources:
       limits:
         cpu: 100m
@@ -211,7 +211,7 @@ ui:
   # Backend configuration
   backend:
     image: ghcr.io/rossoctl/rossoctl/backend
-    tag: v0.7.0-alpha.6
+    tag: v0.8.0-alpha.1
     # Optional Context Service API URL. Empty disables context resource APIs and
     # agent context attachments. Example:
     # http://context-service.serverless-harness.svc.cluster.local:8080
@@ -241,7 +241,7 @@ ui:
 # ------------------------------------------------------------------
 uiOAuthSecret:
   image: ghcr.io/rossoctl/rossoctl/ui-oauth-secret
-  tag: v0.7.0-alpha.6
+  tag: v0.8.0-alpha.1
   # When true, mount the in-cluster serviceaccount CA
   # into the ui-oauth-secret job via the SSL_CERT_FILE environment variable.
   # When false, the serviceaccount CA is only for the API server
@@ -253,7 +253,7 @@ uiOAuthSecret:
 # ------------------------------------------------------------------
 agentOAuthSecret:
   image: ghcr.io/rossoctl/rossoctl/agent-oauth-secret
-  tag: v0.7.0-alpha.6
+  tag: v0.8.0-alpha.1
   # When true, mount the in-cluster serviceaccount CA
   # into the agent-oauth-secret job via the SSL_CERT_FILE environment variable.
   # When false, the serviceaccount CA is only for the API server
@@ -271,7 +271,7 @@ agentOAuthSecret:
 apiOAuthSecret:
   enabled: false
   image: ghcr.io/rossoctl/rossoctl/api-oauth-secret
-  tag: v0.7.0-alpha.6
+  tag: v0.8.0-alpha.1
   # Client ID for the API service account
   clientId: rossoctl-api
   # Name of the K8s secret to store credentials
@@ -289,7 +289,7 @@ apiOAuthSecret:
 # ------------------------------------------------------------------
 operatorSpiffeBootstrap:
   image: ghcr.io/rossoctl/rossoctl/operator-spiffe-bootstrap
-  tag: latest
+  tag: v0.8.0-alpha.1
 
 # ------------------------------------------------------------------
 #  Keycloak Configuration
@@ -368,7 +368,7 @@ authBridge:
 spiffeIdp:
   image:
     repository: ghcr.io/rossoctl/rossoctl/spiffe-idp-setup
-    tag: v0.7.0-alpha.6
+    tag: v0.8.0-alpha.1
     pullPolicy: IfNotPresent
 
 # ------------------------------------------------------------------
@@ -379,7 +379,7 @@ operator-chart:
     container:
       cmd: /manager
       image:
-        tag: 0.3.0-alpha.10
+        tag: 0.3.1-alpha.1
       args:
       - "--leader-elect"
       - "--metrics-bind-address=:8443"
@@ -400,25 +400,11 @@ operator-chart:
   # the explicit value is required because neither ZTWIM nor spire-bundle exist at startup.
   signatureVerification:
     spireTrustDomain: localtest.me
-  # Pin sidecar image tags injected by the AuthBridge webhook.
-  #
-  # After cortex#411 there are three combined images:
-  #   * authbridge      — proxy-sidecar mode (default), full plugin set
-  #                       including the a2a/mcp/inference parsers.
-  #   * authbridge-envoy — envoy-sidecar mode, full plugin set, expects
-  #                       proxyInit's iptables setup.
-  #   * authbridge-lite  — proxy-sidecar shape, auth-only plugins
-  #                       (parsers dropped). For size-constrained deployments;
-  #                       not selected by default.
-  # Spiffe-helper is bundled inside each combined image and gated per
-  # workload by the SPIRE_ENABLED env var; it is no longer a separate
-  # sidecar. Client registration is operator-managed.
-  defaults:
-    images:
-      authbridge: ghcr.io/rossoctl/cortex/authbridge:v0.6.0-alpha.12
-      envoyProxy: ghcr.io/rossoctl/cortex/authbridge-envoy:v0.6.0-alpha.12
-      authbridgeLite: ghcr.io/rossoctl/cortex/authbridge-lite:v0.6.0-alpha.12
-      proxyInit: ghcr.io/rossoctl/cortex/proxy-init:v0.6.0-alpha.12
+  # AuthBridge sidecar image tags (authbridge / -envoy / -lite / proxy-init) are
+  # NOT overridden here — they come from the operator subchart's own defaults,
+  # pinned via the operator-chart dependency version in Chart.yaml. Keeping a
+  # single source of truth avoids the silent drift we hit when this override
+  # block sat stale behind the subchart default (rossoctl/rossoctl#2399).
 
 # ------------------------------------------------------------------
 #  SPIFFE Configuration
@@ -466,7 +452,7 @@ phoenix:
 # ------------------------------------------------------------------
 phoenixOAuthSecret:
   image: ghcr.io/rossoctl/rossoctl/phoenix-oauth-secret
-  tag: v0.7.0-alpha.6
+  tag: v0.8.0-alpha.1
   # Keycloak client ID for Phoenix
   clientId: phoenix
   # Kubernetes secret name to store OAuth credentials
@@ -494,7 +480,7 @@ mlflow:
 # ------------------------------------------------------------------
 mlflowOAuthSecret:
   image: ghcr.io/rossoctl/rossoctl/mlflow-oauth-secret
-  tag: v0.7.0-alpha.6
+  tag: v0.8.0-alpha.1
   # Keycloak client ID for MLflow
   clientId: mlflow
   # Kubernetes secret name to store OAuth credentials

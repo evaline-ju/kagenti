@@ -34,7 +34,7 @@ cd rossoctl
 Check out the latest stable release (recommended). Find the current version at https://github.com/rossoctl/rossoctl/releases/latest.
 
 ```bash
-git checkout v0.7.0-alpha.6
+git checkout v0.7.0
 ```
 
 Copy and configure secrets (optional). Edit `deployments/envs/.secret_values.yaml` with your values.
