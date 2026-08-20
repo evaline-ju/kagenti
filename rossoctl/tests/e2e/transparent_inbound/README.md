@@ -90,9 +90,13 @@ feature.
   webhook does create a per-agent SA and set it on the **pod**, but never on the
   template — so the webhook's fixup is invisible to the controller, and the pod
   ends up mounting a Secret that the controller has already declined to create.
-  That split is a platform defect, tracked separately; setting the SA ourselves is
-  the half we control. Note the `k8s.keycloak.org` CRD is **not** in this path —
-  the controller uses Keycloak's admin REST API directly.
+  That split is latent rather than an active platform defect: every path that
+  creates a workload for real — the backend's agent and tool manifests, and the
+  `7x-deploy-*` scripts — already sets `serviceAccountName`, so only a
+  hand-written Deployment like this fixture ever reaches the refusal. Setting it
+  here is matching what those paths do, not working around a bug. Note the
+  `k8s.keycloak.org` CRD is **not** in this path — the controller uses Keycloak's
+  admin REST API directly.
 
   `TI_STUB_CREDENTIALS=1` creates a placeholder Secret so the interception
   boundary can still be tested on a cluster where registration is genuinely
